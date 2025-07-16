@@ -3,7 +3,6 @@
 
 Pull docker:
 ```
-docker pull rocm/7.0-preview:rocm7.0_preview_ubuntu_22.04_vllm_0.8.5_mi35X_prealpha
 docker pull rocm/7.0-preview:rocm7.0_preview_pytorch_training_mi35X_prealpha
 ```
 
