@@ -328,8 +328,8 @@ __device__ inline static void load_lds_reg(RT &dst, const ST &src) {
         col_offset = 8*(laneid/32);
     }
     else {
-        row_offset = 8*(laneid/32);
-        col_offset = laneid%32;
+        row_offset = 8*(laneid/16);
+        col_offset = laneid%16;
     }
     #pragma unroll
     for(int i = 0; i < dst.height; i++) {
@@ -351,6 +351,9 @@ __device__ inline static void load_lds_reg(RT &dst, const ST &src) {
             else { // handle the column-major layout
                 dst.tiles[i][j].data[0] = base_types::convertor<T2, U2>::convert(U2{src[{row, col}], src[{row+1, col}]});
                 dst.tiles[i][j].data[1] = base_types::convertor<T2, U2>::convert(U2{src[{row+2, col}], src[{row+3, col}]});
+
+                dst.tiles[i][j].data[2] = base_types::convertor<T2, U2>::convert(U2{src[{row+4, col}], src[{row+5, col}]});
+                dst.tiles[i][j].data[3] = base_types::convertor<T2, U2>::convert(U2{src[{row+6, col}], src[{row+7, col}]});
             }
         }
     }
