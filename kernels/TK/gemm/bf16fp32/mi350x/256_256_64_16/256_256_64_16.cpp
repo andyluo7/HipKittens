@@ -158,9 +158,7 @@ void micro_tk(const micro_globals g) {
     __builtin_amdgcn_sched_barrier(0);
     load_lds_reg(B_tile, subtile_inplace<REG_BLOCK_N, DOT_SLICE>(Bs[tic], {warp_col, 0}));
     load_lds_reg(A_tile, subtile_inplace<REG_BLOCK_M, DOT_SLICE>(As[tic], {warp_row, 0}));
-    __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
-    
+    __builtin_amdgcn_s_barrier();    
 
     // Cluster 1
     asm volatile("s_waitcnt lgkmcnt(0)");
@@ -168,13 +166,11 @@ void micro_tk(const micro_globals g) {
     mma_ABt(C_accum, A_tile, B_tile, C_accum);
     __builtin_amdgcn_s_setprio(0);
     __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 2
     load_lds_reg(B_tile, subtile_inplace<REG_BLOCK_N, DOT_SLICE>(Bs[tic], {warp_col, 1}));
     load_lds_reg(A_tile, subtile_inplace<REG_BLOCK_M, DOT_SLICE>(As[tic], {warp_row, 1}));
     __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 3
     asm volatile("s_waitcnt lgkmcnt(0)");
@@ -182,13 +178,11 @@ void micro_tk(const micro_globals g) {
     mma_ABt(C_accum, A_tile, B_tile, C_accum);
     __builtin_amdgcn_s_setprio(0);
     __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 4
     load_lds_reg(B_tile, subtile_inplace<REG_BLOCK_N, DOT_SLICE>(Bs[tic], {warp_col, 2}));
     load_lds_reg(A_tile, subtile_inplace<REG_BLOCK_M, DOT_SLICE>(As[tic], {warp_row, 2}));
     __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 5
     asm volatile("s_waitcnt lgkmcnt(0)");
@@ -196,13 +190,11 @@ void micro_tk(const micro_globals g) {
     mma_ABt(C_accum, A_tile, B_tile, C_accum);
     __builtin_amdgcn_s_setprio(0);
     __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 6
     load_lds_reg(B_tile, subtile_inplace<REG_BLOCK_N, DOT_SLICE>(Bs[tic], {warp_col, 3}));
     load_lds_reg(A_tile, subtile_inplace<REG_BLOCK_M, DOT_SLICE>(As[tic], {warp_row, 3}));
     __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 7
     asm volatile("s_waitcnt lgkmcnt(0)");
@@ -210,7 +202,6 @@ void micro_tk(const micro_globals g) {
     mma_ABt(C_accum, A_tile, B_tile, C_accum);
     __builtin_amdgcn_s_setprio(0);
     __builtin_amdgcn_s_barrier();
-    // __builtin_amdgcn_sched_barrier(0);
 
     if (warp_row == 0) {
         __builtin_amdgcn_s_barrier();
