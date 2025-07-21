@@ -78,6 +78,14 @@ void micro_tk(const micro_globals g) {
     int tic = 0;
     int toc = 1;
 
+    // Load first tile into shared memory
+    load_global_to_shared_direct<2, false, st_bf<BLOCK_SIZE, K_STEP>, _gl_A, coord<st_bf<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(g.a, {0, 0, row, 0}, As[tic]);
+    load_global_to_shared_direct<2, false, st_bf<BLOCK_SIZE, K_STEP>, _gl_B, coord<st_bf<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(g.b, {0, 0, col, 0}, Bs[tic]);
+
+    if (warp_row == 1) {
+        __builtin_amdgcn_s_barrier();
+    }
+
     // Register array to store swizzled global addresses for each thread.
     using T = typename st_bf<BLOCK_SIZE, K_STEP>::dtype;
     constexpr int bytes_per_thread = 16;
@@ -87,16 +95,8 @@ void micro_tk(const micro_globals g) {
     uint32_t swizzled_offsets_A[memcpy_per_tile];
     prefill_swizzled_offsets<2, false, st_bf<BLOCK_SIZE, K_STEP>, _gl_A, coord<st_bf<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(g.a, {0, 0, row, 0}, As[tic], swizzled_offsets_A);
     prefill_swizzled_offsets<2, false, st_bf<BLOCK_SIZE, K_STEP>, _gl_B, coord<st_bf<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(g.b, {0, 0, col, 0}, Bs[tic], swizzled_offsets_B);
-
-    // Load first tile into shared memory
-    load_global_to_shared_direct_with_swizzled_offsets<2, false, st_bf<BLOCK_SIZE, K_STEP>, _gl_A, coord<st_bf<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(g.a, {0, 0, row, 0}, As[tic], swizzled_offsets_A);
-    load_global_to_shared_direct_with_swizzled_offsets<2, false, st_bf<BLOCK_SIZE, K_STEP>, _gl_B, coord<st_bf<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(g.b, {0, 0, col, 0}, Bs[tic], swizzled_offsets_B);
     __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_s_barrier();
-
-    if (warp_row == 1) {
-        __builtin_amdgcn_s_barrier();
-    }
 
     #pragma unroll
     for (int tile = 0; tile < num_tiles - 1; ++tile, tic^=1, toc^=1) {
