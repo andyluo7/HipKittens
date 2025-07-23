@@ -245,8 +245,14 @@ template<int axis, bool assume_aligned,
 __device__ inline void load_global_to_shared_direct(
     const GL& src, const COORD& idx, ST& dst)
 {
+
+    if (threadIdx.x >= N_THREADS) {
+        return;
+    }
+
     using T = typename ST::dtype;
     constexpr int memcpy_per_tile = ST::rows * ST::cols * sizeof(T) / (16 * N_THREADS); // 2
+    static_assert(memcpy_per_tile > 0, "memcpy_per_tile must be greater than 0. Please decrease the number of threads.");
     
     constexpr int elem_per_thread = 16 / sizeof(T);  // 8
     constexpr int elem_per_warp = elem_per_thread * kittens::WARP_THREADS;
@@ -258,7 +264,8 @@ __device__ inline void load_global_to_shared_direct(
     i32x4 srsrc = make_srsrc(global_ptr, row_stride * ST::rows * sizeof(T));
 
     uint32_t dst_ptr = reinterpret_cast<uintptr_t>(&dst.data[0]);
-    int thread_id = threadIdx.x % N_THREADS;
+    
+    int thread_id = threadIdx.x;
     int warp_id = thread_id >> 6;
     
     const T* lds_base = &dst.data[0] + (kittens::warpid() * elem_per_warp);

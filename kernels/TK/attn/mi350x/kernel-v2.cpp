@@ -10,7 +10,7 @@ using namespace kittens;
 #define ATTN_D 32 // dimension
 #define BLOCK_SIZE 32 // block size
 
-#define NUM_WARPS 2
+#define NUM_WARPS 4
 #define NUM_THREADS (kittens::WARP_THREADS * NUM_WARPS)
 
 using _gl_QKVO = gl<bf16, -1, -1, -1, ATTN_D>;
@@ -68,15 +68,15 @@ void attend_ker(const attn_globals g) {
     for (int j = 0; j < num_tiles; j += num_kv_per_iter) {
 
         for (int k = 0; k < num_kv_per_iter; k++) {
-            load_global_to_shared_direct<2, false, st_bf<BLOCK_SIZE, ATTN_D>, _gl_QKVO, coord<st_bf<BLOCK_SIZE, ATTN_D>>, NUM_THREADS>(
+            load_global_to_shared_direct<2, false, st_bf<BLOCK_SIZE, ATTN_D>, _gl_QKVO, coord<st_bf<BLOCK_SIZE, ATTN_D>>, NUM_THREADS / 2>(
                 g.Kg, {batch_idx, head_idx, j + k, 0}, k_smem[k]);
-            load_global_to_shared_direct<2, false, st_bf<BLOCK_SIZE, ATTN_D>, _gl_QKVO, coord<st_bf<BLOCK_SIZE, ATTN_D>>, NUM_THREADS>(
+            load_global_to_shared_direct<2, false, st_bf<BLOCK_SIZE, ATTN_D>, _gl_QKVO, coord<st_bf<BLOCK_SIZE, ATTN_D>>, NUM_THREADS / 2>(
                 g.Vg, {batch_idx, head_idx, j + k, 0}, v_smem[k]);
+            __builtin_amdgcn_s_waitcnt(0);
+            __builtin_amdgcn_s_setprio(0);
+            __builtin_amdgcn_s_barrier();
+            __syncthreads();    
         }
-        __builtin_amdgcn_s_waitcnt(0);
-        __builtin_amdgcn_s_setprio(0);
-        __builtin_amdgcn_s_barrier();
-        __syncthreads();
 
         for (int k = 0; k < num_kv_per_iter; k++) {
 
