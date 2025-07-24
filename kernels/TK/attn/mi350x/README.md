@@ -1,8 +1,11 @@
 
 
-Kernels:
+## Kernel Benchmarks
 
-```
-- ```simple-kernel-v2.cpp``` (18 TFLOPs):  single warp, all in register. 
-- ```simple-kernel-v3.cpp``` (45 TFLOPs):  single warp, all in register, reduce the number of swap layouts. 
+| Kernel file        | Description                                     | Perf. (TFLOPs) |
+|--------------------|-------------------------------------------------|----------------|
+| **reg-kernel.cpp** | 8 warps – everything stays **in-register**      | **82**         |
+| **shared-kernel.cpp** | 8 warps – loads through **shared (LDS)**<br/>`N_STEP = 128`, `N_SUB_STEP = 32` | **59**         |
+
+<sub>*Numbers measured with hipEvent timing; batch=16, heads=16, N=4096, D=64.*</sub>
 
