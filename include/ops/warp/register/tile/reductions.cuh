@@ -348,6 +348,10 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
     for(int j = 0; j < src.width; j++) { // note now width is the outer loop
         RT2 accum_packed = op::template op<RT2>(src.tiles[0][j].data[0], src.tiles[0][j].data[1]);
         #pragma unroll
+        for(int k = 2; k < src.packed_per_tile; k++) {
+            accum_packed = op::template op<RT2>(accum_packed, src.tiles[0][j].data[k]);
+        }
+        #pragma unroll
         for(int i = 1; i < src.height; i++) { // and height is the inner loop
             #pragma unroll
             for(int k = 0; k < src.packed_per_tile; k++) {
@@ -370,8 +374,6 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
 
         col_accum[j][0].x = packed_shfl(MASK_ALL, col_accum[j][0].x, leader);
         col_accum[j][0].y = col_accum[j][0].x;
-
-        printf("threadIdx.x: %d, j: %d, accum_single: %f\n", threadIdx.x, j, accum_single);
     }
 }
 #endif
