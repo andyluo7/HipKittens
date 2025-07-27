@@ -43,13 +43,21 @@ namespace kittens {
  
      T dst_tmp[16];
      #pragma unroll
-     for(int k = 0; k < 16; k++) {
-         if constexpr (std::is_same_v<T, bf16>) {
-             dst_tmp[block_offset^k] = __float2bfloat16(__shfl(__bfloat162float(src_tmp[block_offset^k]), lane ^ (((k % 8) / 4) * 32)));
-         }
-         else {
-             dst_tmp[block_offset^k] = __shfl(src_tmp[block_offset^k], lane ^ (((k % 8) / 4) * 32));
-         }
+     for(int k = 0; k < 8; k++) {
+        // 0:4, 8:12
+        const int kk = (k / 4) * 8 + (k % 4);
+        dst_tmp[block_offset^kk] = src_tmp[block_offset^kk];
+     }
+     #pragma unroll
+     for(int k = 0; k < 8; k++) {
+        // 4:8, 12:16
+        const int kk = (k / 4) * 8 + (k % 4) + 4;
+        if constexpr (std::is_same_v<T, bf16>) {
+            dst_tmp[block_offset^kk] = __float2bfloat16(__shfl(__bfloat162float(src_tmp[block_offset^kk]), lane ^ (((kk % 8) / 4) * 32)));
+        }
+        else {
+            dst_tmp[block_offset^kk] = __shfl(src_tmp[block_offset^kk], lane ^ (((kk % 8) / 4) * 32));
+        }
      }
  
      dst.data[0].x = dst_tmp[0];
