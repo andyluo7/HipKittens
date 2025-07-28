@@ -335,6 +335,10 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
 #ifdef KITTENS_CDNA4
 template<typename op, ducks::rv::all V, ducks::rt::accumulator_layout T, bool reset>
 __device__ static inline void col_reduce(V &col_accum, const T &src, const V &src_accum) {
+
+    typedef unsigned int  uint32_t;
+    typedef uint32_t      uint2_t __attribute__((ext_vector_type(2)));
+
     // I actually like these static asserts because they give more verbose errors when things go wrong.
     static_assert(std::is_same_v<typename V::layout, typename rt_base<typename T::T, typename T::layout>::row_vec_layout>); // compatible layout
     static_assert(std::is_same_v<typename V::dtype, typename T::dtype>); // compatible type
@@ -346,9 +350,9 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
     const int leader = laneid() % 32;
     #pragma unroll
     for(int j = 0; j < src.width; j++) { // note now width is the outer loop
-        RT2 accum_packed = op::template op<RT2>(src.tiles[0][j].data[0], src.tiles[0][j].data[1]);
+        RT2 accum_packed = src.tiles[0][j].data[0];
         #pragma unroll
-        for(int k = 2; k < src.packed_per_tile; k++) {
+        for(int k = 1; k < src.packed_per_tile; k++) {
             accum_packed = op::template op<RT2>(accum_packed, src.tiles[0][j].data[k]);
         }
         #pragma unroll
@@ -360,10 +364,30 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
         }
 
         RT accum_single = op::template op<RT>(accum_packed.x, accum_packed.y);
+        
+        // Graciously taken from https://github.com/triton-lang/triton/pull/7321/files
+        // When numLaneToReduce == 2 && interleave == 32:
+        //   step 1: use permlane32_swap() to swap the row 2 and 3 of acc and
+        //           the row 0 and 1 of the copy of acc
+        //   step 2: apply reduction to the result values to get final result
+        if constexpr (std::is_same_v<RT, float>) {
+            uint2_t res = __builtin_amdgcn_permlane32_swap(__float_as_uint(accum_single), __float_as_uint(accum_single), false, true);
+            accum_single = op::template op<RT>(__uint_as_float(res.x), __uint_as_float(res.y));
+        }
+        else if constexpr (std::is_same_v<RT, bf16>) {
+            uint2_t res = __builtin_amdgcn_permlane32_swap(__bfloat16_as_ushort(accum_single), __bfloat16_as_ushort(accum_single), false, true);
+            accum_single = op::template op<RT>(__ushort_as_bfloat16(res.x), __ushort_as_bfloat16(res.y));
+        }
+        else if constexpr (std::is_same_v<RT, half>) {
+            uint2_t res = __builtin_amdgcn_permlane32_swap(__half_as_ushort(accum_single), __half_as_ushort(accum_single), false, true);
+            accum_single = op::template op<RT>(__ushort_as_half(res.x), __ushort_as_half(res.y));
+        } else {
+            accum_single = op::template op<RT>(accum_single, packed_shfl_down(MASK_ALL, accum_single, 32));
+        }
 
         // Now we need to do a lil shuffle to make everyone happy.
 
-        accum_single = op::template op<RT>(accum_single, packed_shfl_down(MASK_ALL, accum_single, 32));
+        // accum_single = op::template op<RT>(accum_single, packed_shfl_down(MASK_ALL, accum_single, 32));
 
         if(reset) {
             col_accum[j][0].x = accum_single;
@@ -372,7 +396,10 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
             col_accum[j][0].x = op::template op<RT>(src_accum[j][0].x, accum_single);
         }
 
-        col_accum[j][0].x = packed_shfl(MASK_ALL, col_accum[j][0].x, leader);
+        if constexpr (!std::is_same_v<RT, float> && !std::is_same_v<RT, bf16> && !std::is_same_v<RT, half>) {
+            col_accum[j][0].x = packed_shfl(MASK_ALL, col_accum[j][0].x, leader);
+        }
+        
         col_accum[j][0].y = col_accum[j][0].x;
     }
 }
