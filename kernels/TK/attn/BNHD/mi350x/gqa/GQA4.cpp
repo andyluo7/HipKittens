@@ -8,7 +8,7 @@ constexpr int ATTN_H_KV = 8; // number of heads for key and value
 constexpr int ATTN_N = 8192; // sequence length
 constexpr int ATTN_D = 128; // dimension
 constexpr int Q_BLOCK_SIZE = 32; // q block size
-constexpr int KV_BLOCK_SIZE = 64;
+constexpr int KV_BLOCK_SIZE = 64; // kv block size
 
 #define NUM_WARPS 8
 #define NUM_THREADS (kittens::WARP_THREADS * NUM_WARPS)
@@ -74,9 +74,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
 
     load_global_to_shared_direct_with_swizzled_offsets<1, false, st_bf<KV_BLOCK_SIZE, ATTN_D>, _gl_QKVO, coord<st_bf<KV_BLOCK_SIZE,ATTN_D>>, NUM_THREADS>(
         g.Kg, {batch_idx, 0, head_idx_kv, 0}, k_smem[0], swizzled_offsets_K);
-    __builtin_amdgcn_s_waitcnt(0);
-    __builtin_amdgcn_s_barrier();
-    __builtin_amdgcn_sched_barrier(0);
 
     // Pre-scale Q by temperature
     qo_tile<D, float> q_reg_fl;
@@ -90,8 +87,10 @@ __global__ void attend_ker(const attn_globals<D> g) {
     neg_infty(max_vec);
 
     // All warps then load in the first slice of K (K0)
-    load_lds_reg(k_reg, k_smem[0]);
     __builtin_amdgcn_s_waitcnt(0);
+    __builtin_amdgcn_s_barrier();
+    __builtin_amdgcn_sched_barrier(0);
+    load_lds_reg(k_reg, k_smem[0]);
     __builtin_amdgcn_sched_barrier(0);
 
     // All warps then collaboratively load in the first slice of V (V0) and the second slice of K (K1) into shared memory
@@ -99,11 +98,9 @@ __global__ void attend_ker(const attn_globals<D> g) {
         g.Kg, {batch_idx, 1, head_idx_kv, 0}, k_smem[1], swizzled_offsets_K);
     load_global_to_shared_direct_with_swizzled_offsets<1, false, st_bf<KV_BLOCK_SIZE, ATTN_D>, _gl_QKVO, coord<st_bf<KV_BLOCK_SIZE,ATTN_D>>, NUM_THREADS>(
         g.Vg, {batch_idx, 0, head_idx_kv, 0}, v_smem[0], swizzled_offsets_V);
-    __builtin_amdgcn_s_waitcnt(0);
-    __builtin_amdgcn_s_barrier();
-    __builtin_amdgcn_sched_barrier(0);
 
     // Each warp performs QK0
+    asm volatile("s_waitcnt lgkmcnt(0)");
     zero(att_block);
     swap_layout_and_transpose(k_reg_transposed, k_reg);
     mma_AtB(att_block, k_reg_transposed, q_reg_transposed, att_block);
@@ -127,9 +124,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
         g.Vg, {batch_idx, 1, head_idx_kv, 0}, v_smem[1], swizzled_offsets_V);
     // All warps then load in the second slice of K (K1)
     load_lds_reg(k_reg, k_smem[1]);
-    __builtin_amdgcn_s_waitcnt(0);
-    __builtin_amdgcn_sched_barrier(0);
-    __builtin_amdgcn_s_barrier();
 
     // hot loop
     for (int j = 3; j < num_tiles - 1; j += 2) {
@@ -144,6 +138,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
         att_block_col_bf16 = swap_layout_inplace<col_l>(att_block_bf16);
         __builtin_amdgcn_sched_barrier(0);
         //      QK1
+        asm volatile("s_waitcnt lgkmcnt(0)");
         zero(att_block);
         swap_layout_and_transpose(k_reg_transposed, k_reg);
         mma_AtB(att_block, k_reg_transposed, q_reg_transposed, att_block);
@@ -157,13 +152,13 @@ __global__ void attend_ker(const attn_globals<D> g) {
             g.Kg, {batch_idx, j, head_idx_kv, 0}, k_smem[1], swizzled_offsets_K);
         //      Load V0 into registers
         load_lds_reg_col(v_reg, v_smem[0]);
-        __builtin_amdgcn_s_waitcnt(0);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
         __builtin_amdgcn_sched_barrier(0);
 
         // Cluster 2:
         //      A0V0
+        asm volatile("s_waitcnt lgkmcnt(0)");
         mul_col(o_reg, o_reg, max_vec_prev);
         mma_AtB(o_reg, v_reg, att_block_col_bf16, o_reg);
         __builtin_amdgcn_sched_barrier(0);
@@ -182,7 +177,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
             g.Vg, {batch_idx, j - 1, head_idx_kv, 0}, v_smem[0], swizzled_offsets_V);
         //      Load K2 into registers
         load_lds_reg(k_reg, k_smem[0]);
-        __builtin_amdgcn_s_waitcnt(0);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
         __builtin_amdgcn_sched_barrier(0);
@@ -197,6 +191,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
         att_block_col_bf16 = swap_layout_inplace<col_l>(att_block_bf16);
         __builtin_amdgcn_sched_barrier(0);
         //      QK2
+        asm volatile("s_waitcnt lgkmcnt(0)");
         zero(att_block);
         swap_layout_and_transpose(k_reg_transposed, k_reg);
         mma_AtB(att_block, k_reg_transposed, q_reg_transposed, att_block);
@@ -210,13 +205,13 @@ __global__ void attend_ker(const attn_globals<D> g) {
             g.Kg, {batch_idx, j + 1, head_idx_kv, 0}, k_smem[0], swizzled_offsets_K);
         //      Load V1 into registers
         load_lds_reg_col(v_reg, v_smem[1]);
-        __builtin_amdgcn_s_waitcnt(0);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
         __builtin_amdgcn_sched_barrier(0);
 
         // Cluster 6:
         //      A1V1
+        asm volatile("s_waitcnt lgkmcnt(0)");
         mul_col(o_reg, o_reg, max_vec_prev);
         mma_AtB(o_reg, v_reg, att_block_col_bf16, o_reg);
         __builtin_amdgcn_sched_barrier(0);
@@ -235,7 +230,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
             g.Vg, {batch_idx, j, head_idx_kv, 0}, v_smem[1], swizzled_offsets_V);
         //      Load K3 into registers
         load_lds_reg(k_reg, k_smem[1]);
-        __builtin_amdgcn_s_waitcnt(0);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
         __builtin_amdgcn_sched_barrier(0);
@@ -252,6 +246,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     att_block_col_bf16 = swap_layout_inplace<col_l>(att_block_bf16);
     __builtin_amdgcn_sched_barrier(0);
     //      QK3
+    asm volatile("s_waitcnt lgkmcnt(0)");
     zero(att_block);
     swap_layout_and_transpose(k_reg_transposed, k_reg);
     mma_AtB(att_block, k_reg_transposed, q_reg_transposed, att_block);
@@ -265,13 +260,13 @@ __global__ void attend_ker(const attn_globals<D> g) {
         g.Kg, {batch_idx, num_tiles - 1, head_idx_kv, 0}, k_smem[1], swizzled_offsets_K);
     //      Load V2 into registers
     load_lds_reg_col(v_reg, v_smem[0]);
-    __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
     __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 2:
     //      A2V2
+    asm volatile("s_waitcnt lgkmcnt(0)");
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_col_bf16, o_reg);
     __builtin_amdgcn_sched_barrier(0);
@@ -290,7 +285,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
         g.Vg, {batch_idx, num_tiles - 2, head_idx_kv, 0}, v_smem[0], swizzled_offsets_V);
     //      Load K4 into registers
     load_lds_reg(k_reg, k_smem[0]);
-    __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
     __builtin_amdgcn_sched_barrier(0);
@@ -305,6 +299,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     att_block_col_bf16 = swap_layout_inplace<col_l>(att_block_bf16);
     __builtin_amdgcn_sched_barrier(0);
     //      QK4
+    asm volatile("s_waitcnt lgkmcnt(0)");
     zero(att_block);
     swap_layout_and_transpose(k_reg_transposed, k_reg);
     mma_AtB(att_block, k_reg_transposed, q_reg_transposed, att_block);
@@ -315,13 +310,13 @@ __global__ void attend_ker(const attn_globals<D> g) {
     // Cluster 5:
     //      Load V3 into registers
     load_lds_reg_col(v_reg, v_smem[1]);
-    __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
     __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 6:
     //      A3V3
+    asm volatile("s_waitcnt lgkmcnt(0)");
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_col_bf16, o_reg);
     __builtin_amdgcn_sched_barrier(0);
@@ -340,7 +335,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
         g.Vg, {batch_idx, num_tiles - 1, head_idx_kv, 0}, v_smem[1], swizzled_offsets_V);
     //      Load K5 into registers
     load_lds_reg(k_reg, k_smem[1]);
-    __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
     __builtin_amdgcn_sched_barrier(0);
@@ -355,6 +349,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     att_block_col_bf16 = swap_layout_inplace<col_l>(att_block_bf16);
     __builtin_amdgcn_sched_barrier(0);
     //      QK5
+    asm volatile("s_waitcnt lgkmcnt(0)");
     zero(att_block);
     swap_layout_and_transpose(k_reg_transposed, k_reg);
     mma_AtB(att_block, k_reg_transposed, q_reg_transposed, att_block);
@@ -365,13 +360,13 @@ __global__ void attend_ker(const attn_globals<D> g) {
     // Cluster 9:
     //      Load V4 into registers
     load_lds_reg_col(v_reg, v_smem[0]);
-    __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
     __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 10:
     //      A4V4
+    asm volatile("s_waitcnt lgkmcnt(0)");
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_col_bf16, o_reg);
     __builtin_amdgcn_sched_barrier(0);
@@ -393,13 +388,13 @@ __global__ void attend_ker(const attn_globals<D> g) {
     // Cluster 11:
     //      Load V5 into registers
     load_lds_reg_col(v_reg, v_smem[1]);
-    __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
     __builtin_amdgcn_sched_barrier(0);
 
     // Cluster 12:
     //      A5V5
+    asm volatile("s_waitcnt lgkmcnt(0)");
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_col_bf16, o_reg);
     __builtin_amdgcn_sched_barrier(0);
