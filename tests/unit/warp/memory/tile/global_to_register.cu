@@ -14,14 +14,14 @@ struct g2r_wrapper_2d {
         this_result.label = generate_test_name<H,W,NUM_WORKERS,args...>(test::test_identifier);
         if constexpr (test::template valid<H, W, NUM_WORKERS, args...>::value) {
             constexpr int B = 1, D = 1, R = 1, C = 1;
-            constexpr int SIZE = H*W*256 * B * D * R * C;
+            constexpr int SIZE = H*W*512 * B * D * R * C;
             // initialize
             dtype *d_i, *d_o;
             std::vector<float> i_ref(SIZE);
             std::vector<float> o_ref(SIZE);
             initialize(&d_i, &d_o, i_ref, o_ref);
             // make descriptors
-            using GL = typename kittens::gl<dtype, -1, D, -1, 16*C*W>;
+            using GL = typename kittens::gl<dtype, -1, D, -1, 32*C*W>;
             GL input (d_i, B, nullptr, 16*R*H, nullptr);
             GL output(d_o, B, nullptr, 16*R*H, nullptr);
             // run kernel
@@ -34,7 +34,7 @@ struct g2r_wrapper_2d {
             // fill in correct results on cpu
             test::template host_func<H, W, NUM_WORKERS, GL, args...>(i_ref, o_ref);
             // check and cleanup
-            this_result.result = validate(d_i, d_o, i_ref, o_ref, this_result.label, W*16);
+            this_result.result = validate(d_i, d_o, i_ref, o_ref, this_result.label, W*32);
         }
         else {
             this_result.result = test_result::INVALID;
@@ -57,13 +57,23 @@ struct load_store {
         o_ref = i_ref; // overwrite the whole thing
     }
     template<int H, int W, int NW, kittens::ducks::gl::all GL, kittens::ducks::rt_layout::all L> __device__ static void device_func(const GL input, const GL output) {
-        kittens::rt_bf<16*H, 16*W, L> reg_tile;
+        kittens::rt_fp8e4m3<16*H, 32*W, L> reg_tile;
+        if (kittens::warpid() == 0 && kittens::laneid() == 0) {
+            printf("input rows: %d, reg_tile rows: %d, reg_tile cols: %d, input cols: %d\n", input.rows(), reg_tile.rows, reg_tile.cols, input.cols());
+        }
         for(int i = 0; i < input.batch(); i++) for(int j = 0; j < input.depth(); j++) for(int k = 0; k < input.rows()/reg_tile.rows; k++) for(int l = 0; l < input.cols()/reg_tile.cols; l++) {
             kittens::load(reg_tile, input, {i, j, k, l});
-            // __syncthreads();
-            // if (kittens::warpid() == 0 && kittens::laneid() == 0) {
-            //     printf("reg_tile: %f\n", kittens::base_types::convertor<float, kittens::bf16>::convert(reg_tile.tiles[0][0].data[1].x));
-            // }
+            __syncthreads();
+            if (kittens::warpid() == 0 && kittens::laneid() == 1) {
+                kittens::fp8e4m3_4 tmp = reg_tile.tiles[0][0].data[1];
+                float4 f4 = kittens::base_types::convertor<float4, kittens::fp8e4m3_4>::convert(tmp);
+                printf("reg_tile: %f\n", kittens::base_types::convertor<float, kittens::fp8e4m3>::convert(f4.x));
+            }
+            if (kittens::warpid() == 0 && kittens::laneid() == 17) {
+                kittens::fp8e4m3_4 tmp = reg_tile.tiles[0][0].data[1];
+                float4 f4 = kittens::base_types::convertor<float4, kittens::fp8e4m3_4>::convert(tmp);
+                printf("reg_tile: %f\n", kittens::base_types::convertor<float, kittens::fp8e4m3>::convert(f4.x));
+            }
             kittens::store(output, reg_tile, {i, j, k, l});
         }
     }

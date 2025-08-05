@@ -45,7 +45,7 @@ __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
     int row_offset = laneid%32, col_offset = 8*(laneid/32);
     int REPEAT = 2;
     #else
-    int row_offset = laneid%16, col_offset = 4*(laneid/16);
+    int row_offset = laneid%16, col_offset = 8*(laneid/16);
     int REPEAT = 1;
     #endif
     
@@ -68,15 +68,7 @@ __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
                 int col = dst.tile_size_col*j + col_offset + z*16;
 
                 U2* tmp;
-                if constexpr (std::is_same_v<U2, fp8e4m3_4>) {
-                    float loaded = std::bit_cast<float>(llvm_amdgcn_raw_buffer_load_b32(
-                        std::bit_cast<i32x4>(br),
-                        (row*row_stride + col) * sizeof(U),
-                        0,
-                        0
-                    ));
-                    tmp = reinterpret_cast<U2*>(&loaded);
-                } else if constexpr (sizeof(U2) == 4) { // bf16_2
+                if constexpr (sizeof(U2) == 4) { // bf16_2 or fp8e4m3_4
 
                     #ifdef KITTENS_CDNA4
                     float4 loaded = std::bit_cast<float4>(llvm_amdgcn_raw_buffer_load_b128(
@@ -117,22 +109,18 @@ __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
                     dst.tiles[i][j].data[k + z*4] = base_types::convertor<T2, U2>::convert(tmp[k]);
                 }
                 #else
-                if constexpr (std::is_same_v<U2, fp8e4m3_4>) {
-                    dst.tiles[i][j].data[0] = base_types::convertor<T2, U2, base_types::which_half::FIRST>::convert(*tmp);
-                    dst.tiles[i][j].data[1] = base_types::convertor<T2, U2, base_types::which_half::SECOND>::convert(*tmp);
-                } else {
-                    #pragma unroll
-                    for(int k = 0; k < 2; k++) {
-                        dst.tiles[i][j].data[k] = base_types::convertor<T2, U2>::convert(tmp[k]);
-                    }
+                #pragma unroll
+                for(int k = 0; k < 2; k++) {
+                    dst.tiles[i][j].data[k] = base_types::convertor<T2, U2>::convert(tmp[k]);
                 }
+                float4 f4 = kittens::base_types::convertor<float4, fp8e4m3_4>::convert(dst.tiles[i][j].data[0]);
                 // if (blockIdx.x == 0 && threadIdx.x == 0) {
-                //     printf("dst.tiles[%d][%d].data[0]: %f\n", i, j, float(dst.tiles[i][j].data[0].x));
-                //     printf("dst.tiles[%d][%d].data[1]: %f\n", i, j, float(dst.tiles[i][j].data[1].x));
+                //     printf("dst.tiles[%d][%d].data[0]: %f\n", i, j, float(f4.x));
+                //     printf("dst.tiles[%d][%d].data[1]: %f\n", i, j, float(f4.y));
                 // }
                 // if (blockIdx.x == 0 && threadIdx.x == 16) {
-                //     printf("dst.tiles[%d][%d].data[0]: %f\n", i, j, float(dst.tiles[i][j].data[0].x));
-                //     printf("dst.tiles[%d][%d].data[1]: %f\n", i, j, float(dst.tiles[i][j].data[1].x));
+                //     printf("dst.tiles[%d][%d].data[0]: %f\n", i, j, float(f4.x));
+                //     printf("dst.tiles[%d][%d].data[1]: %f\n", i, j, float(f4.y));
                 // }
                 #endif
 
