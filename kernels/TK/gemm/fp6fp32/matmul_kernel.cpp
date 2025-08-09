@@ -50,6 +50,7 @@ int main() {
 
     // Initialize with different values
     for (int i = 0; i < SIZE * SIZE; i++) {
+        // h_input[i] = din(1.1f);
         h_input[i] = din(dis(gen));
     }
 
