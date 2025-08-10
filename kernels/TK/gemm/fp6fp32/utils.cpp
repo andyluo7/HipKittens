@@ -52,9 +52,9 @@ __device__ inline void prefill_swizzled_offsets(
     const int warp_id = warpid();
     const int row_stride = src.template stride<axis>();
 
-    constexpr int num_warps = N_THREADS / 64;
+    constexpr int num_warps = N_THREADS / kittens::WARP_THREADS;
     constexpr int num_register_subtiles = kittens::TILE_ROW_DIM<T> * kittens::TILE_COL_DIM<T> / elem_per_warp;
-    constexpr int num_register_tiles_per_row = ST::cols / kittens::TILE_ROW_DIM<T>;
+    constexpr int num_register_tiles_per_row = ST::cols / kittens::TILE_COL_DIM<T>;
 
     #pragma unroll
     for (int i = 0; i < memcpy_per_tile; i++) {
@@ -101,6 +101,12 @@ __device__ inline void load_global_to_shared_direct_with_swizzled_offsets(
 
     const int warp_id = warpid();
     const T* lds_base = &dst.data[0] + (warp_id * elem_per_warp);
+
+    int condition = (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0);
+    if (condition) {
+        printf("size of T: %d\n", sizeof(T));
+        printf("memcpy_per_tile: %d\n", memcpy_per_tile);
+    }
 
     #pragma unroll
     for (int i = 0; i < memcpy_per_tile; i++) {
