@@ -1,4 +1,5 @@
 #include "kittens.cuh"
+#include "utils.cpp"
 #include <random>
 using namespace kittens;
 
@@ -27,13 +28,34 @@ struct micro_globals {
 
 __global__ __launch_bounds__(NUM_THREADS, 1)
 void micro_tk(const micro_globals g) {
-    rt_fl<SIZE, SIZE> tile_fl;
-    rt_f6<SIZE, SIZE> tile_fp6;
-    rt_bf<SIZE, SIZE> tile_bf16;
-    load(tile_fp6, g.input, {0, 0, 0, 0});
-    __syncthreads();
-    store(g.output, tile_fp6, {0, 0, 0, 0});
-    __syncthreads();
+    extern __shared__ alignment_dummy __shm[];
+    shared_allocator al((int*)&__shm[0]);
+    st_f6<SIZE, SIZE> (&tile_fp6) = al.allocate<st_f6<SIZE, SIZE>>();
+    rt_f6<SIZE, SIZE> tile_fp6_rt;
+
+    using T = typename st_f6<SIZE, SIZE>::dtype;  // fp6_e2m3
+    using U = typename _gl_tile_in::dtype;        // fp6_e2m3  
+    using U2 = base_types::packing<U>::packed_type; // fp6_e2m3_4
+    
+    constexpr int bytes_per_thread = 16;
+    constexpr int bytes_per_memcpy = bytes_per_thread * NUM_THREADS;
+    constexpr int memcpy_per_tile = (SIZE * SIZE * sizeof(U) + bytes_per_memcpy - 1) / bytes_per_memcpy;
+    
+    uint32_t swizzled_offsets[memcpy_per_tile];
+    
+    // Use axis=2 (like your working global-to-register code)
+    prefill_swizzled_offsets<2, false, rt_f6<SIZE, SIZE>, st_f6<SIZE, SIZE>, _gl_tile_in, coord<st_f6<SIZE, SIZE>>, NUM_THREADS>(
+        g.input, {0, 0, 0, 0}, tile_fp6, swizzled_offsets);
+        
+    load_global_to_shared_direct_with_swizzled_offsets<2, false, st_f6<SIZE, SIZE>, _gl_tile_in, coord<st_f6<SIZE, SIZE>>, NUM_THREADS>(
+        g.input, {0, 0, 0, 0}, tile_fp6, swizzled_offsets);
+        
+    __builtin_amdgcn_s_waitcnt(0);
+    __builtin_amdgcn_s_barrier();
+
+    load_lds_reg_row(tile_fp6_rt, tile_fp6);
+
+    store(g.output, tile_fp6_rt, {0, 0, 0, 0});
 }
 
 int main() {
@@ -57,6 +79,13 @@ int main() {
         // h_input[i] = din(1.0f); // / 100.0f);
         h_input[i] = din(dis(gen));
     }
+    for (int i = 0; i < SIZE*2; i++) {
+        printf("%.2f | ", float(h_input[i]));
+        if (i % 16 == 15) {
+            printf("\n");
+        }
+    }
+    printf("\n");
 
     // Allocate device memory for FP6 input
     din *d_input;
@@ -96,18 +125,21 @@ int main() {
         float output_as_float = float(h_output[i]);
         float diff = std::abs(output_as_float - input_as_float);
 
-        if (diff > 0.1) {
+        if (diff == 0.0f) {
             large_diffs++;
         }
 
-        if (large_diffs_printed < 40 && diff > 0.1) {
+        if (output_as_float != 0.0f && diff > 0.0 && large_diffs_printed < 40) {
             std::cout << "[" << i << "] " << input_as_float << " -> " << output_as_float 
                     << " (diff: " << diff << ")\n";
+            
+        }
+        if (diff > 0.01) {
             large_diffs_printed++;
         }
     }
 
-    std::cout << "Number of large differences: " << large_diffs << " / " << SIZE * SIZE << std::endl;
+    std::cout << "Number of correct: " << large_diffs << " / " << SIZE * SIZE << std::endl;
 
     // Clean up (remove the h_input_float delete)
     hipFree(d_input);
