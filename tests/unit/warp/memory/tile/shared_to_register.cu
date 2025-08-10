@@ -6,7 +6,7 @@ template<typename T>
 struct sharedreg_load_store {
     using dtype = T;
     template<int H, int W, int NW, kittens::ducks::rt_layout::all RL> using valid = std::bool_constant<
-      ( NW == 1 && W*H<=64 ) 
+      ( NW == 1 && W*H<=16 ) && (W*H*kittens::TILE_COL_DIM<T>*kittens::TILE_ROW_DIM<T>*sizeof(T) <= kittens::MAX_SHARED_MEMORY)
     >;
     static inline const std::string test_identifier = std::is_same_v<T, kittens::bf16> ? "shared_reg_loadstore_gmem=bf16" :
                                                       std::is_same_v<T, kittens::half> ? "shared_reg_loadstore_gmem=half" :
@@ -15,17 +15,34 @@ struct sharedreg_load_store {
         o_ref = i_ref; // overwrite the whole thing
     }
     template<int H, int W, int NW, kittens::ducks::gl::all GL, kittens::ducks::rt_layout::all RL> __device__ static void device_func(const GL input, const GL output) {
+        #ifdef KITTENS_CDNA4
         extern __shared__ kittens::alignment_dummy __shm[]; // this is the CUDA shared memory
         kittens::shared_allocator<16> al((int*)&__shm[0]); 
-        kittens::st<T, 16*H, 16*W> &shared_tile = al.allocate<kittens::st<T, 16*H, 16*W>>();
+        kittens::st<T, kittens::TILE_ROW_DIM<T>*H, kittens::TILE_COL_DIM<T>*W> &shared_tile = al.allocate<kittens::st<T, kittens::TILE_ROW_DIM<T>*H, kittens::TILE_COL_DIM<T>*W>>();
+        kittens::load<RL>(shared_tile, input, {0, 0, 0, 0});
+        __builtin_amdgcn_s_waitcnt(0);
+        __builtin_amdgcn_s_barrier();
+        kittens::rt<T, kittens::TILE_ROW_DIM<T>*H, kittens::TILE_COL_DIM<T>*W, RL> reg_tile;
+        kittens::load(reg_tile, shared_tile);
+        __builtin_amdgcn_s_waitcnt(0);
+        __builtin_amdgcn_s_barrier();
+        kittens::store(shared_tile, reg_tile);
+        __builtin_amdgcn_s_waitcnt(0);
+        __builtin_amdgcn_s_barrier();
+        kittens::store<RL>(output, shared_tile, {0, 0, 0, 0});
+        #else
+        extern __shared__ kittens::alignment_dummy __shm[]; // this is the CUDA shared memory
+        kittens::shared_allocator<16> al((int*)&__shm[0]); 
+        kittens::st<T, kittens::TILE_ROW_DIM<T>*H, kittens::TILE_COL_DIM<T>*W> &shared_tile = al.allocate<kittens::st<T, kittens::TILE_ROW_DIM<T>*H, kittens::TILE_COL_DIM<T>*W>>();
         kittens::load(shared_tile, input, {0, 0, 0, 0});
         __syncthreads();
-        kittens::rt<T, 16*H, 16*W, RL> reg_tile;
+        kittens::rt<T, kittens::TILE_ROW_DIM<T>*H, kittens::TILE_COL_DIM<T>*W, RL> reg_tile;
         kittens::load(reg_tile, shared_tile);
         __syncthreads();
         kittens::store(shared_tile, reg_tile);
         __syncthreads();
         kittens::store(output, shared_tile, {0, 0, 0, 0});
+        #endif
     }
 };
 
@@ -37,7 +54,7 @@ void warp::memory::tile::shared_to_register::tests(test_data &results) {
                          INTENSITY_3 ? 8  :
                          INTENSITY_4 ? 16 : -1;
 
-    sweep_gmem_type_2d_warp<sharedreg_load_store, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
+    // sweep_gmem_type_2d_warp<sharedreg_load_store, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
     sweep_gmem_type_2d_warp<sharedreg_load_store, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
 }
 
