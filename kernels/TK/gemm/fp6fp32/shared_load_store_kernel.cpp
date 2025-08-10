@@ -67,7 +67,7 @@ int main() {
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(1.0f, 3.3f);
+    std::uniform_real_distribution<> dis(0.0f, 3.3f);
 
     // Initialize with FP6 values (convert from float)
     h_input[0] = din(1.0f);     // Convert float → FP6
@@ -76,16 +76,8 @@ int main() {
     h_input[3] = din(10.0f);
     h_input[4] = din(-10.0f);
     for (int i = 5; i < SIZE * SIZE; i++) {
-        // h_input[i] = din(1.0f); // / 100.0f);
         h_input[i] = din(dis(gen));
     }
-    for (int i = 0; i < SIZE*2; i++) {
-        printf("%.2f | ", float(h_input[i]));
-        if (i % 16 == 15) {
-            printf("\n");
-        }
-    }
-    printf("\n");
 
     // Allocate device memory for FP6 input
     din *d_input;
@@ -132,10 +124,7 @@ int main() {
         if (output_as_float != 0.0f && diff > 0.0 && large_diffs_printed < 40) {
             std::cout << "[" << i << "] " << input_as_float << " -> " << output_as_float 
                     << " (diff: " << diff << ")\n";
-            
-        }
-        if (diff > 0.01) {
-            large_diffs_printed++;
+                    large_diffs_printed++;
         }
     }
 

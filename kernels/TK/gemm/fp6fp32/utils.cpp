@@ -102,12 +102,6 @@ __device__ inline void load_global_to_shared_direct_with_swizzled_offsets(
     const int warp_id = warpid();
     const T* lds_base = &dst.data[0] + (warp_id * elem_per_warp);
 
-    int condition = (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0);
-    if (condition) {
-        printf("size of T: %d\n", sizeof(T));
-        printf("memcpy_per_tile: %d\n", memcpy_per_tile);
-    }
-
     #pragma unroll
     for (int i = 0; i < memcpy_per_tile; i++) {
         const T* lds_elem_ptr = lds_base + (i * N_THREADS * elem_per_thread);
