@@ -34,7 +34,7 @@ struct g2s_wrapper_2d {
                 hipFuncAttributeMaxDynamicSharedMemorySize,
                 kittens::MAX_SHARED_MEMORY
             );
-            global_wrapper_2d<test, dtype, H, W, NUM_WORKERS, GL, axis, args...><<<1, NUM_WORKERS*64, kittens::MAX_SHARED_MEMORY>>>(input, output);
+            global_wrapper_2d<test, dtype, H, W, NUM_WORKERS, GL, axis, args...><<<1, NUM_WORKERS*kittens::WARP_THREADS, kittens::MAX_SHARED_MEMORY>>>(input, output);
             // fill in correct results on cpu
             test::template host_func<H, W, NUM_WORKERS, GL, axis, args...>(i_ref, o_ref);
             // check and cleanup
@@ -51,10 +51,15 @@ template<typename test, int MAX_H=8, int MAX_W=8, typename... args> using g2s_sw
 template<template<typename, typename = kittens::bf16> typename test, int MAX_H=8, int MAX_W=8, typename... args>
 struct g2s_sweep_gmem_type_2d_warp {
     static void run(test_data &results) {
+        #ifdef KITTENS_CDNA4
+        g2s_sweep_size_2d_warp<test<kittens::bf16>, MAX_H, MAX_W, args...>::run(results);
+        g2s_sweep_size_2d_warp<test<kittens::half>, MAX_H, MAX_W, args...>::run(results);
+        #else
         g2s_sweep_size_2d_warp<test<float>, MAX_H, MAX_W, args...>::run(results);
         g2s_sweep_size_2d_warp<test<kittens::bf16>, MAX_H, MAX_W, args...>::run(results);
         g2s_sweep_size_2d_warp<test<kittens::half>, MAX_H, MAX_W, args...>::run(results);
         g2s_sweep_size_2d_warp<test<kittens::fp8e4m3, kittens::fp8e4m3>, MAX_H, MAX_W, args...>::run(results);
+        #endif
     }
 };
 
@@ -64,21 +69,19 @@ struct st_load_store {
     using dtype = T;
     using rt_dtype = RT;
     template<int H, int W, int NW, typename axis> using valid = std::bool_constant<
-        (NW == 1 && W*H<=64) 
+        (NW == 1 && W*H<=64) && (W*H*kittens::TILE_COL_DIM<T>*kittens::TILE_ROW_DIM<T>*sizeof(T) <= kittens::MAX_SHARED_MEMORY)
     >;
     static inline const std::string test_identifier = std::is_same_v<T, kittens::bf16> ? "shared_loadstore_gmem=bf16" :
                                                       std::is_same_v<T, kittens::half> ? "shared_loadstore_gmem=half" :
                                                       std::is_same_v<T, kittens::fp8e4m3> ? "shared_loadstore_gmem=fp8e4m3" :
                                                                                               "shared_loadstore_gmem=float";
     template<int H, int W, int NW, kittens::ducks::gl::all GL, typename axis> __host__ static void host_func(const std::vector<float> &i_ref, std::vector<float> &o_ref) {
-
-
         o_ref = i_ref; // overwrite the whole thing
     }
     template<int H, int W, int NW, kittens::ducks::gl::all GL, typename axis> __device__ static void device_func(const GL &input, const GL &output) {
         constexpr int rt_height = kittens::TILE_ROW_DIM<rt_dtype>;
         constexpr int rt_width = kittens::TILE_COL_DIM<rt_dtype>;
-        extern __shared__ kittens::alignment_dummy __shm[]; // this is the CUDA shared memory
+        extern __shared__ kittens::alignment_dummy __shm[]; // this is the HIP shared memory
         kittens::shared_allocator<1024> al((int*)&__shm[0]);
         using ST = kittens::st<T, rt_height*H, rt_width*W>;
         ST &shared_tile = al.allocate<ST>();
@@ -89,8 +92,13 @@ struct st_load_store {
             for(int j = 0; j < num_depths; j++)
                 for(int k = 0; k < num_rows; k++)
                     for(int l = 0; l < (input.cols()/shared_tile.cols); l++) {
+            #ifdef KITTENS_CDNA4
+            kittens::load <axis::value, false, kittens::ducks::rt_layout::row, ST, GL, kittens::coord<ST>>(shared_tile,  input, {i, j, k, l});
+            kittens::store<axis::value, false, kittens::ducks::rt_layout::row, ST, GL, kittens::coord<ST>>(output, shared_tile, {i, j, k, l});
+            #else
             kittens::load <axis::value, false, ST, GL, kittens::coord<ST>>(shared_tile,  input, {i, j, k, l});
             kittens::store<axis::value, false, ST, GL, kittens::coord<ST>>(output, shared_tile, {i, j, k, l});
+            #endif
         }
     }
 };
@@ -100,7 +108,8 @@ using I1_t = std::integral_constant<int, 1>;
 using I2_t = std::integral_constant<int, 2>;
 void warp::memory::tile::global_to_shared::tests(test_data &results) {
     std::cout << "\n ----- Starting ops/warp/memory/tile/global_to_shared tests! -----\n" << std::endl;
-    constexpr int SIZE = INTENSITY_1 ? 2  :
+    constexpr int SIZE = INTENSITY_0 ? 1  :
+                         INTENSITY_1 ? 2  :
                          INTENSITY_2 ? 4  :
                          INTENSITY_3 ? 8  :
                          INTENSITY_4 ? 16 : -1;

@@ -198,12 +198,8 @@ test_result validate(T1 *d_i, T2 *d_o, const std::vector<float> &i_ref, std::vec
         }
     }
     if(good) std::cout << " -- PASSED" << std::endl;
-    else {
-        std::cout << " ----- ALERT! FAILED test `" << test_name << "` -----" << std::endl;
-        std::cout << "max_diff: " << max_diff << std::endl;
-        std::cout << "max_diff_idx: " << max_diff_idx << std::endl;
-    }
-    if(should_write_outputs) {
+    else std::cout << " ----- ALERT! FAILED test `" << test_name << "` -----" << std::endl;
+    if(should_write_outputs && !good) {
         std::ofstream reffile("outputs/"+test_name+"_ref.txt");
         std::ofstream outfile("outputs/"+test_name+"_out.txt");
         for(int i = 0; i < output_size; i++) {
