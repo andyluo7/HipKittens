@@ -179,13 +179,14 @@ __device__ inline void prefill_swizzled_offsets_fp6(
 {
 
     using T = typename ST::dtype;
-    constexpr int bytes_per_thread = 12;
-    constexpr int memcpy_per_tile =  (ST::rows * ST::cols * 6 / 8) / (bytes_per_thread * N_THREADS);
+    constexpr int elems_per_thread = 16;
+    constexpr int memcpy_per_tile =  (ST::rows * ST::cols) / (elems_per_thread * N_THREADS);
     static_assert(memcpy_per_tile > 0, "memcpy_per_tile must be greater than 0. Please decrease the number of threads.");
 
-    constexpr int bytes_per_warp = bytes_per_thread * kittens::WARP_THREADS; // 16 * 64 = 1024
+    constexpr int elems_per_warp = elems_per_thread * kittens::WARP_THREADS; // 16 * 64 = 1024
     const int warp_id = warpid();
-    const int num_subtiles = (kittens::TILE_COL_DIM<T> * kittens::TILE_ROW_DIM<T> * 6 / 8) / bytes_per_warp;
+    const int laneid = kittens::laneid() % kittens::WARP_THREADS;
+    const int num_subtiles = (kittens::TILE_COL_DIM<T> * kittens::TILE_ROW_DIM<T>) / elems_per_warp;
     // byte stride
     const int row_stride = src.template stride<axis>();
 
@@ -202,8 +203,8 @@ __device__ inline void prefill_swizzled_offsets_fp6(
         const int warp_col_offset = ((register_tile_id % num_register_tiles_per_row) * num_subtiles + register_subtile_id) * register_subtile_cols;
         const int warp_row_offset = (register_tile_id / num_register_tiles_per_row) * kittens::TILE_ROW_DIM<T>;
 
-        int col_offset = warp_col_offset + (laneid() / 32) * 16;
-        int row_offset = warp_row_offset + (laneid() % 32); 
+        int col_offset = warp_col_offset + (laneid / 32) * 16;
+        int row_offset = warp_row_offset + (laneid % 32); 
         const int offset_in_global = (row_offset * row_stride + col_offset) * 6 / 8;
 
         swizzled_offsets[i] = offset_in_global;
@@ -221,11 +222,11 @@ __device__ inline void load_global_to_shared_direct_with_swizzled_offsets_fp6(
 {
 
     using U = typename ST::dtype;
-    constexpr int bytes_per_thread = 12;
-    constexpr int memcpy_per_tile =  (ST::rows * ST::cols * 6 / 8)  / (bytes_per_thread * N_THREADS);
+    constexpr int elems_per_thread = 16;
+    constexpr int memcpy_per_tile =  (ST::rows * ST::cols)  / (elems_per_thread * N_THREADS);
     static_assert(memcpy_per_tile > 0, "memcpy_per_tile must be greater than 0. Please decrease the number of threads.");
     
-    constexpr int elem_per_warp = bytes_per_thread * kittens::WARP_THREADS;
+    constexpr int elem_per_warp = elems_per_thread * kittens::WARP_THREADS;
 
     // byte stride
     const int row_stride = src.template stride<axis>();
@@ -235,11 +236,11 @@ __device__ inline void load_global_to_shared_direct_with_swizzled_offsets_fp6(
 
     const int warp_id = warpid();
     auto* lds_bytes = reinterpret_cast<uint8_t*>(&dst.data[0]);
-    const uint8_t* lds_base = lds_bytes + warp_id * elem_per_warp;
+    const uint8_t* lds_base = lds_bytes + warp_id * elem_per_warp * sizeof(U);
 
     #pragma unroll
     for (int i = 0; i < memcpy_per_tile; i++) {
-        const uint8_t* lds_elem_ptr = lds_base + i * N_THREADS * 16;
+        const uint8_t* lds_elem_ptr = lds_base + i * N_THREADS * elems_per_thread * sizeof(U);
         as3_uint32_ptr lds_ptr = (as3_uint32_ptr)reinterpret_cast<uintptr_t>(lds_elem_ptr);
 
         llvm_amdgcn_raw_buffer_load_lds(
@@ -274,7 +275,7 @@ __device__ inline void load_global_to_shared_direct_with_swizzled_offsets_fp6(
 
      const int subtile_stride = kittens::TILE_ROW_DIM<U> * kittens::TILE_COL_DIM<U> * sizeof(U) / 2;
      const int tile_stride = subtile_stride * 2;
-     const int row_stride = tile_stride * dst.width;
+     const int row_stride = tile_stride * src.underlying_width;
  
      #pragma unroll
      for(int i = 0; i < dst.height; i++) {
@@ -286,6 +287,7 @@ __device__ inline void load_global_to_shared_direct_with_swizzled_offsets_fp6(
             for (int k = 0; k < 2; k++) {
                 asm volatile(
                     "ds_read_b96 %0, %1 offset:%2\n"
+                    "s_waitcnt lgkmcnt(0)\n"
                     : "=v"(*reinterpret_cast<__uint96_t*>((reinterpret_cast<uint8_t*>(&dst.tiles[i][j].data[0]) + k * 12)))
                     : "v"(addr),
                     "i"(i * row_stride + j * tile_stride + k * subtile_stride)
@@ -304,7 +306,7 @@ __device__ inline static void store_fp6(const GL &dst, const RT &src, const COOR
 
     U *dst_ptr = (U*)&dst[(idx.template unit_coord<axis, 3>())];
     const int row_stride = dst.template stride<axis>();
-    int laneid = kittens::laneid();
+    int laneid = kittens::laneid() % kittens::WARP_THREADS;
 
     int row_offset = laneid%32, col_offset = 16*(laneid/32);
 
@@ -322,6 +324,7 @@ __device__ inline static void store_fp6(const GL &dst, const RT &src, const COOR
                 int col = src.tile_size_col*j + col_offset + k * 32;
                 
                 const __uint96_t val_b96 = *reinterpret_cast<const __uint96_t*>((reinterpret_cast<const uint8_t*>(&src.tiles[i][j].data[0]) + k * 12));
+                // const __uint96_t val_b96 = {0x11111111, 0x11111111, 0x11111111};
                 llvm_amdgcn_raw_buffer_store_b96(val_b96, srsrc, (row*row_stride + col) * 6 / 8, 0, 0);
             }
         }

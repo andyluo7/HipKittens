@@ -4,14 +4,19 @@
 using namespace kittens;
 
 
-#define NUM_WARPS 1
+#define NUM_WARPS 2
 #define NUM_THREADS (kittens::WARP_THREADS * NUM_WARPS)
 
-#define SIZE 256
+#define M 64
+#define K 64
+
+#define BLOCK_SIZE 64
+#define K_STEP 64
+#define REG_BLOCK_M 32
+#define DOT_SLICE 64
 
 using din = fp6_e2m3;
 using dout = fp6_e2m3;
-
 
 using _gl_tile_in = gl<din, -1, -1, -1, -1>;
 using _gl_tile_out = gl<dout, -1, -1, -1, -1>;
@@ -21,7 +26,7 @@ using G = kittens::group<NUM_WARPS>;
 struct micro_globals {
     _gl_tile_in input;
     _gl_tile_out output;
-    dim3 grid()  { return dim3(1); } 
+    dim3 grid()  { return dim3(M / BLOCK_SIZE); } 
     dim3 block() { return dim3(NUM_THREADS); } 
     size_t dynamic_shared_memory() { return MAX_SHARED_MEMORY; } 
 };
@@ -30,32 +35,42 @@ __global__ __launch_bounds__(NUM_THREADS, 1)
 void micro_tk(const micro_globals g) {
     extern __shared__ alignment_dummy __shm[];
     shared_allocator al((int*)&__shm[0]);
-    st_f6<SIZE, SIZE> (&tile_fp6) = al.allocate<st_f6<SIZE, SIZE>>();
-    rt_f6<SIZE, SIZE> tile_fp6_rt;
+    st_f6<BLOCK_SIZE, K_STEP> (&tile_fp6) = al.allocate<st_f6<BLOCK_SIZE, K_STEP>>();
+    rt_f6<REG_BLOCK_M, DOT_SLICE> tile_fp6_rt;
+
+    const int row = blockIdx.x;
+
+    // Info
+    const int warp_id = warpid();
+    const int warp_row = warp_id;
+    const int num_tiles = K / K_STEP;
+    const int num_slices = K_STEP / DOT_SLICE;
 
     constexpr int bytes_per_thread = 12;
-    constexpr int memcpy_per_tile =  (SIZE * SIZE * 6 / 8) / (bytes_per_thread * NUM_THREADS);
-    
+    constexpr int memcpy_per_tile =  (BLOCK_SIZE * K_STEP * 6 / 8) / (bytes_per_thread * NUM_THREADS);
     uint32_t swizzled_offsets[memcpy_per_tile];
     
     // Use axis=2 (like your working global-to-register code)
-    prefill_swizzled_offsets_fp6<2, false, rt_f6<SIZE, SIZE>, st_f6<SIZE, SIZE>, _gl_tile_in, coord<st_f6<SIZE, SIZE>>, NUM_THREADS>(
-        g.input, {0, 0, 0, 0}, tile_fp6, swizzled_offsets);
-        
-    load_global_to_shared_direct_with_swizzled_offsets_fp6<2, false, st_f6<SIZE, SIZE>, _gl_tile_in, coord<st_f6<SIZE, SIZE>>, NUM_THREADS>(
-        g.input, {0, 0, 0, 0}, tile_fp6, swizzled_offsets);
-    __builtin_amdgcn_sched_barrier(0);
-    __builtin_amdgcn_s_waitcnt(0);
-    __builtin_amdgcn_s_barrier();
-    __builtin_amdgcn_sched_barrier(0);
+    prefill_swizzled_offsets_fp6<2, false, rt_f6<REG_BLOCK_M, DOT_SLICE>, st_f6<BLOCK_SIZE, K_STEP>, _gl_tile_in, coord<st_f6<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(
+        g.input, {0, 0, row, 0}, tile_fp6, swizzled_offsets);
 
-    load_lds_reg_row_fp6(tile_fp6_rt, tile_fp6);
-    __builtin_amdgcn_sched_barrier(0);
-    __builtin_amdgcn_s_waitcnt(0);
-    __builtin_amdgcn_s_barrier();
-    __builtin_amdgcn_sched_barrier(0);
+    for (int i = 0; i < num_tiles; i++) {
+        load_global_to_shared_direct_with_swizzled_offsets_fp6<2, false, st_f6<BLOCK_SIZE, K_STEP>, _gl_tile_in, coord<st_f6<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(
+            g.input, {0, 0, row, i}, tile_fp6, swizzled_offsets);
+        __builtin_amdgcn_sched_barrier(0);
+        __builtin_amdgcn_s_waitcnt(0);
+        __builtin_amdgcn_s_barrier();
+        __builtin_amdgcn_sched_barrier(0);
 
-    store_fp6(g.output, tile_fp6_rt, {0, 0, 0, 0});
+        for (int j = 0; j < num_slices; j++) {
+            load_lds_reg_row_fp6(tile_fp6_rt, subtile_inplace<REG_BLOCK_M, DOT_SLICE>(tile_fp6, {warp_row, j}));
+            __builtin_amdgcn_sched_barrier(0);
+            __builtin_amdgcn_s_waitcnt(0);
+            __builtin_amdgcn_s_barrier();
+            __builtin_amdgcn_sched_barrier(0);
+            store_fp6(g.output, tile_fp6_rt, {0, 0, row * 2 + warp_row, i * num_slices + j});
+        }
+    }
 }
 
 
@@ -102,10 +117,10 @@ int main() {
     std::cout << "=== Simple FP6 Kernel Test ===\n";
     
     // Create FP6 data, not float data
-    din *h_input = new din[SIZE * SIZE];  // ← FP6, not float
-    uint32_t *h_input_packed = new uint32_t[SIZE * SIZE * 6 / 32];
-    uint32_t *h_output_packed = new uint32_t[SIZE * SIZE * 6 / 32];
-    dout *h_output = new dout[SIZE * SIZE];
+    din *h_input = new din[M * K];  // ← FP6, not float
+    uint32_t *h_input_packed = new uint32_t[M * K * 6 / 32];
+    uint32_t *h_output_packed = new uint32_t[M * K * 6 / 32];
+    dout *h_output = new dout[M * K];
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -117,23 +132,23 @@ int main() {
     // h_input[2] = din(-3.7f);
     // h_input[3] = din(10.0f);
     // h_input[4] = din(-10.0f);
-    for (int i = 0; i < SIZE * SIZE; i++) {
+    for (int i = 0; i < M * K; i++) {
         h_input[i] = din(dis(gen));
         // h_input[i] = din(1.125f);
     }
-    pack(h_input_packed, h_input, SIZE * SIZE);
+    pack(h_input_packed, h_input, M * K);
 
     // Allocate device memory for FP6 input
     din *d_input_packed;
     dout *d_output_packed;
-    hipMalloc(&d_input_packed, SIZE * SIZE * 6 / 8);
-    hipMalloc(&d_output_packed, SIZE * SIZE * 6 / 8);
+    hipMalloc(&d_input_packed, M * K * 6 / 8);
+    hipMalloc(&d_output_packed, M * K * 6 / 8);
 
-    hipMemcpy(d_input_packed, h_input_packed, SIZE * SIZE * 6 / 8, hipMemcpyHostToDevice);
+    hipMemcpy(d_input_packed, h_input_packed, M * K * 6 / 8, hipMemcpyHostToDevice);
 
     // Setup kernel globals with proper FP6 type
-    _gl_tile_in input_gl(d_input_packed, 1, 1, SIZE, SIZE);
-    _gl_tile_out output_gl(d_output_packed, 1, 1, SIZE, SIZE);
+    _gl_tile_in input_gl(d_input_packed, 1, 1, M, K);
+    _gl_tile_out output_gl(d_output_packed, 1, 1, M, K);
     micro_globals globals{input_gl, output_gl};
 
 
@@ -142,8 +157,8 @@ int main() {
     hipDeviceSynchronize();
 
     // Copy back result
-    hipMemcpy(h_output_packed, d_output_packed, SIZE * SIZE * 6 / 8, hipMemcpyDeviceToHost);
-    unpack(h_output, h_output_packed, SIZE * SIZE);
+    hipMemcpy(h_output_packed, d_output_packed, M * K * 6 / 8, hipMemcpyDeviceToHost);
+    unpack(h_output, h_output_packed, M * K);
 
     // Print results - just convert directly, no extra array
     std::cout << "Comparison:\n";
@@ -157,7 +172,7 @@ int main() {
     int large_diffs = 0;
     int large_diffs_printed = 0;
     std::cout << "\nDetailed comparison:\n";
-    for (int i = 0; i < SIZE * SIZE; i++) {
+    for (int i = 0; i < M * K; i++) {
         float input_as_float = float(h_input[i]);  // Convert FP6 to float
         float output_as_float = float(h_output[i]);
         float diff = std::abs(output_as_float - input_as_float);
@@ -182,15 +197,15 @@ int main() {
     //     }
     // }
     // print entire output array
-    // std::cout << "Output array:" << std::endl;
-    // for (int i = 0; i < SIZE * SIZE; i++) {
-    //     std::cout << float(h_output[i]) << " ";
-    //     if ((i + 1) % SIZE == 0) {
-    //         std::cout << std::endl;
-    //     }
-    // }
+    std::cout << "Output array:" << std::endl;
+    for (int i = 0; i < M * K; i++) {
+        std::cout << float(h_output[i]) << " ";
+        if ((i + 1) % K == 0) {
+            std::cout << std::endl;
+        }
+    }
 
-    std::cout << "Number of correct: " << large_diffs << " / " << SIZE * SIZE << std::endl;
+    std::cout << "Number of correct: " << large_diffs << " / " << M * K << std::endl;
 
     // Clean up (remove the h_input_float delete)
     hipFree(d_input_packed);
