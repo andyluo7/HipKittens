@@ -48,19 +48,19 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx)
 {
 
     using T = typename ST::dtype;
-    static_assert(sizeof(T) == 2, "only supporting 16-bit dtypes");
+    static_assert(sizeof(T) == 2 || sizeof(T) == 1, "only supporting 16 and 8-bit dtypes");
     constexpr int memcpy_per_tile =  ST::rows * ST::cols * sizeof(T) / (16 * N_THREADS); // 16 --> 32
     static_assert(memcpy_per_tile > 0, "memcpy_per_tile must be greater than 0. Please decrease the number of threads.");
     
-    constexpr int elem_per_thread = 16 / sizeof(T);  // 8
-    constexpr int elem_per_warp = elem_per_thread * kittens::WARP_THREADS; // 512
+    constexpr int elem_per_thread = 16 / sizeof(T);  // 8 if bf16, 16 if fp8
+    constexpr int elem_per_warp = elem_per_thread * kittens::WARP_THREADS; // 512 if bf16, 1024 if fp8
     const int laneid = kittens::laneid() % N_THREADS;
     const int warp_id = laneid / N_THREADS;
     const int row_stride = src.template stride<axis>();
 
     constexpr int num_warps = N_THREADS / 64;
     constexpr int num_register_subtiles = kittens::TILE_ROW_DIM<T> * kittens::TILE_COL_DIM<T> / elem_per_warp;
-    constexpr int num_register_tiles_per_row = ST::cols / kittens::TILE_ROW_DIM<T>;
+    constexpr int num_register_tiles_per_row = ST::cols / kittens::TILE_COL_DIM<T>;
 
     coord<> unit_coord = idx.template unit_coord<axis, 3>();
     T* global_ptr = (T*)&src[unit_coord];
@@ -82,9 +82,10 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx)
             const int warp_col_offset = ((register_tile_id % num_register_tiles_per_row) * num_register_subtiles + register_subtile_id) * register_subtile_cols;
             const int warp_row_offset = (register_tile_id / num_register_tiles_per_row) * kittens::TILE_ROW_DIM<T>;
 
-            col_offset = warp_col_offset + (laneid / 32) * elem_per_thread;
-            row_offset = warp_row_offset + (laneid % 32);
+            col_offset = warp_col_offset + (laneid / kittens::TILE_ROW_DIM<T>) * elem_per_thread;
+            row_offset = warp_row_offset + (laneid % kittens::TILE_ROW_DIM<T>);
         } else if constexpr (std::is_same_v<RT_layout, ducks::rt_layout::col>) {
+            static_assert(!std::is_same_v<T, fp8e4m3>, "column major layout not supported for fp8");
             const int register_subtile_rows = kittens::TILE_ROW_DIM<T> / num_register_subtiles;
             const int num_register_subtiles_per_row = num_register_tiles_per_row;
             const int warp_col_offset = (register_tile_id % num_register_subtiles_per_row) * kittens::TILE_COL_DIM<T>;
@@ -212,19 +213,20 @@ __device__ static inline void store(const GL &dst, const ST &src, const COORD &i
 
     using U = typename GL::dtype;
     using T = typename ST::dtype;
-    static_assert(sizeof(T) == 2, "only supporting 16-bit dtypes");
+    static_assert(std::is_same_v<U, T> || !std::is_same_v<T, fp8e4m3>, "global and shared tile must have the same dtype if fp8");
+    static_assert(sizeof(T) == 2 || sizeof(T) == 1, "only supporting 16 and 8-bit dtypes");
     constexpr int memcpy_per_tile =  ST::rows * ST::cols * sizeof(T) / (16 * N_THREADS); // 16 --> 32
     static_assert(memcpy_per_tile > 0, "memcpy_per_tile must be greater than 0. Please decrease the number of threads.");
 
     const int laneid = kittens::laneid() % N_THREADS;
-    const int elem_per_thread = 16 / sizeof(T); // 8 
-    constexpr int elem_per_warp = elem_per_thread * kittens::WARP_THREADS; // 512
+    const int elem_per_thread = 16 / sizeof(T); // 8 if bf16, 16 if fp8
+    constexpr int elem_per_warp = elem_per_thread * kittens::WARP_THREADS; // 512 if bf16, 1024 if fp8
     const int warp_id = laneid / N_THREADS;
     const int row_stride = dst.template stride<axis>();
 
     constexpr int num_warps = N_THREADS / 64;
     constexpr int num_register_subtiles = kittens::TILE_ROW_DIM<T> * kittens::TILE_COL_DIM<T> / elem_per_warp;
-    constexpr int num_register_tiles_per_row = ST::cols / kittens::TILE_ROW_DIM<T>;
+    constexpr int num_register_tiles_per_row = ST::cols / kittens::TILE_COL_DIM<T>;
 
     const T* lds_base = &src.data[0] + (warp_id * elem_per_warp);
 
@@ -245,9 +247,10 @@ __device__ static inline void store(const GL &dst, const ST &src, const COORD &i
             const int warp_col_offset = ((register_tile_id % num_register_tiles_per_row) * num_register_subtiles + register_subtile_id) * register_subtile_cols;
             const int warp_row_offset = (register_tile_id / num_register_tiles_per_row) * kittens::TILE_ROW_DIM<T>;
 
-            col_offset = warp_col_offset + (laneid / 32) * elem_per_thread;
-            row_offset = warp_row_offset + (laneid % 32);
+            col_offset = warp_col_offset + (laneid / kittens::TILE_ROW_DIM<T>) * elem_per_thread;
+            row_offset = warp_row_offset + (laneid % kittens::TILE_ROW_DIM<T>);
         } else if constexpr (std::is_same_v<RT_layout, ducks::rt_layout::col>) {
+            static_assert(!std::is_same_v<T, fp8e4m3>, "column major layout not supported for fp8");
             const int register_subtile_rows = kittens::TILE_ROW_DIM<T> / num_register_subtiles;
             const int num_register_subtiles_per_row = num_register_tiles_per_row;
             const int warp_col_offset = (register_tile_id % num_register_subtiles_per_row) * kittens::TILE_COL_DIM<T>;
@@ -268,14 +271,10 @@ __device__ static inline void store(const GL &dst, const ST &src, const COORD &i
         const int offset_in_global = (row_offset * row_stride + col_offset);
         const T* lds_elem_ptr = lds_base + (i * N_THREADS * elem_per_thread);
 
-        global_ptr[offset_in_global] = lds_elem_ptr[laneid * elem_per_thread];
-        global_ptr[offset_in_global + 1] = lds_elem_ptr[laneid * elem_per_thread + 1];
-        global_ptr[offset_in_global + 2] = lds_elem_ptr[laneid * elem_per_thread + 2];
-        global_ptr[offset_in_global + 3] = lds_elem_ptr[laneid * elem_per_thread + 3];
-        global_ptr[offset_in_global + 4] = lds_elem_ptr[laneid * elem_per_thread + 4];
-        global_ptr[offset_in_global + 5] = lds_elem_ptr[laneid * elem_per_thread + 5];
-        global_ptr[offset_in_global + 6] = lds_elem_ptr[laneid * elem_per_thread + 6];
-        global_ptr[offset_in_global + 7] = lds_elem_ptr[laneid * elem_per_thread + 7];
+        #pragma unroll
+        for (int e = 0; e < elem_per_thread; ++e) {
+            global_ptr[offset_in_global + e] = lds_elem_ptr[laneid * elem_per_thread + e];
+        }
     }
 }
 template<ducks::rt_layout::all RT_layout, ducks::st::all ST, ducks::gl::all GL, ducks::coord::tile COORD=coord<ST>>

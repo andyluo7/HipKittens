@@ -54,11 +54,11 @@ struct g2s_sweep_gmem_type_2d_warp {
         #ifdef KITTENS_CDNA4
         g2s_sweep_size_2d_warp<test<kittens::bf16>, MAX_H, MAX_W, args...>::run(results);
         g2s_sweep_size_2d_warp<test<kittens::half>, MAX_H, MAX_W, args...>::run(results);
+        g2s_sweep_size_2d_warp<test<kittens::fp8e4m3, kittens::fp8e4m3>, MAX_H, MAX_W, args...>::run(results);
         #else
         g2s_sweep_size_2d_warp<test<float>, MAX_H, MAX_W, args...>::run(results);
         g2s_sweep_size_2d_warp<test<kittens::bf16>, MAX_H, MAX_W, args...>::run(results);
         g2s_sweep_size_2d_warp<test<kittens::half>, MAX_H, MAX_W, args...>::run(results);
-        g2s_sweep_size_2d_warp<test<kittens::fp8e4m3, kittens::fp8e4m3>, MAX_H, MAX_W, args...>::run(results);
         #endif
     }
 };

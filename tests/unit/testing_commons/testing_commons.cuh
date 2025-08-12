@@ -193,18 +193,21 @@ static __global__ void global_wrapper_2d(const G input, const G output) {
 template<typename test, int H, int W, int NUM_WORKERS, typename... args>
 struct wrapper_2d {
     using dtype = gmem_dtype<test>; // defaults to bf16 in global memory if the test doesn't specify.
+    using rt_dtype = test::rt_dtype;
     static void run(test_data& results) {
         test_info this_result;
         this_result.label = generate_test_name<H,W,NUM_WORKERS,args...>(test::test_identifier);
         if constexpr (test::template valid<H, W, NUM_WORKERS, args...>::value) {
-            constexpr int SIZE = H*W*kittens::TILE_COL_DIM<dtype>*kittens::TILE_ROW_DIM<dtype>;
+            constexpr int rt_height = kittens::TILE_ROW_DIM<rt_dtype>;
+            constexpr int rt_width = kittens::TILE_COL_DIM<rt_dtype>;
+            constexpr int SIZE = H*W*rt_height*rt_width;
             // initialize
             dtype *d_i, *d_o;
             std::vector<float> i_ref(SIZE);
             std::vector<float> o_ref(SIZE);
             initialize(&d_i, &d_o, i_ref, o_ref);
             // make descriptors
-            using GL = typename kittens::gl<dtype, 1, 1, H*kittens::TILE_ROW_DIM<dtype>, W*kittens::TILE_COL_DIM<dtype>>;
+            using GL = typename kittens::gl<dtype, 1, 1, H*rt_height, W*rt_width>;
             GL input(d_i, nullptr, nullptr, nullptr, nullptr);
             GL output(d_o, nullptr, nullptr, nullptr, nullptr);
             // run kernel
@@ -219,7 +222,7 @@ struct wrapper_2d {
             // check and cleanup
 
             int is_fp8 = (this_result.label.find("fp8") != std::string::npos) || (this_result.label.find("e4m3") != std::string::npos) || (this_result.label.find("e5m2") != std::string::npos);
-            this_result.result = validate(d_i, d_o, i_ref, o_ref, this_result.label, W*kittens::TILE_COL_DIM<dtype>, is_fp8 ? 0.1 : 5e-2); // mma's sometimes produce small errors. this appears to be hardware.
+            this_result.result = validate(d_i, d_o, i_ref, o_ref, this_result.label, W*rt_width, is_fp8 ? 0.1 : 5e-2); // mma's sometimes produce small errors. this appears to be hardware.
         }
         else {
             this_result.result = test_result::INVALID;
@@ -238,6 +241,7 @@ struct sweep_gmem_type_2d {
         #ifdef KITTENS_CDNA4
         sweep_size_2d<test<kittens::bf16>, MAX_H, MAX_W, NUM_WORKERS, args...>::run(results);
         sweep_size_2d<test<kittens::half>, MAX_H, MAX_W, NUM_WORKERS, args...>::run(results);
+        sweep_size_2d<test<kittens::fp8e4m3>, MAX_H, MAX_W, NUM_WORKERS, args...>::run(results);
         #else
         sweep_size_2d<test<float>, MAX_H, MAX_W, NUM_WORKERS, args...>::run(results);
         sweep_size_2d<test<kittens::bf16>, MAX_H, MAX_W, NUM_WORKERS, args...>::run(results);

@@ -52,15 +52,16 @@ __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
     int laneid = kittens::laneid();
 
     int row_offset = laneid%32, col_offset = 4*base_types::packing<U2>::num()*(laneid/32);
-    
 
     uint32_t buffer_size = src.batch() * src.depth() * src.rows() * src.cols() * sizeof(U);
     std::uintptr_t as_int = reinterpret_cast<std::uintptr_t>(src_ptr);
     std::uint64_t  as_u64 = static_cast<std::uint64_t>(as_int);    // widen if host is 32-bit
     buffer_resource br = make_buffer_resource(as_u64, buffer_size, 0x00020000);
 
+    constexpr int REPEAT = 2;
+
     #pragma unroll
-    for (int z = 0; z < 2; z++) {
+    for (int z = 0; z < REPEAT; z++) {
 
         #pragma unroll
         for(int i = 0; i < dst.height; i++) {
@@ -297,7 +298,9 @@ __device__ inline static void store(const GL &dst, const RT &src, const COORD &i
 
     int row_offset = laneid%32, col_offset = 4*base_types::packing<U2>::num()*(laneid/32);
 
-    for (int z = 0; z < 2; z++) {
+    constexpr int REPEAT = 2;
+
+    for (int z = 0; z < REPEAT; z++) {
 
         #pragma unroll
         for(int i = 0; i < src.height; i++) {
