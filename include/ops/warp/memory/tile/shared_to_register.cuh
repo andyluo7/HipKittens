@@ -36,7 +36,8 @@ __device__ inline static void load(RT &dst, const ST &src) {
     using T  = base_types::packing<T2>::unpacked_type;
     using U  = ST::dtype;
     using U2 = base_types::packing<U >::packed_type;
-    static_assert(sizeof(U) == 2, "only supporting 16-bit dtypes");
+    static_assert(sizeof(U) == 2 || sizeof(U) == 1, "only supporting 16 and 8-bit dtypes");
+    static_assert((!std::is_same_v<T, fp8e4m3>) || std::is_same_v<U, T>, "global and shared tile must have the same dtype if fp8");
 
     const int laneid = kittens::laneid();
 
@@ -47,10 +48,11 @@ __device__ inline static void load(RT &dst, const ST &src) {
     uint32_t addr;
 
     if constexpr (std::is_same_v<typename RT::layout, ducks::rt_layout::row>) {
-        const int elem_per_thread = 16 / sizeof(U); // 8 
+        const int elem_per_thread = 16 / sizeof(U); // 8 if bf16, 16 if fp8e4m3
         addr = reinterpret_cast<uintptr_t>(&src.data[laneid * elem_per_thread]);
     }
     else {
+        static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "column major layout not supported for fp8");
         const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
         const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
         const int subtile_offset = row_offset * kittens::TILE_ROW_DIM<U> + col_offset;
@@ -165,7 +167,8 @@ __device__ inline static void store(ST &dst, const RT &src) {
     using T  = base_types::packing<T2>::unpacked_type;
     using U  = ST::dtype;
     using U2 = base_types::packing<U >::packed_type;
-    static_assert(sizeof(U) == 2, "only supporting 16-bit dtypes");
+    static_assert(sizeof(U) == 2 || sizeof(U) == 1, "only supporting 16 and 8-bit dtypes");
+    static_assert((!std::is_same_v<T, fp8e4m3>) || std::is_same_v<U, T>, "global and shared tile must have the same dtype if fp8");
 
     const int laneid = kittens::laneid();
 
@@ -176,10 +179,11 @@ __device__ inline static void store(ST &dst, const RT &src) {
     uint32_t addr;
 
     if constexpr (std::is_same_v<typename RT::layout, ducks::rt_layout::row>) {
-        const int elem_per_thread = 16 / sizeof(U); // 8 
+        const int elem_per_thread = 16 / sizeof(U); // 8 if bf16, 16 if fp8e4m3
         addr = reinterpret_cast<uintptr_t>(&dst.data[laneid * elem_per_thread]);
     }
     else {
+        static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "column major layout not supported for fp8");
         const int row_offset = 8*(laneid/32);
         const int col_offset = laneid%32;
         addr = row_offset * kittens::TILE_ROW_DIM<U> + col_offset;
