@@ -37,7 +37,7 @@ llvm_amdgcn_raw_buffer_load_lds(int32x4_t rsrc, // does not change (buffer resou
  {
  
     using T = typename ST::dtype;
-    constexpr int bytes_per_thread = 16;
+    constexpr int bytes_per_thread = 12;
     constexpr int memcpy_per_tile =  (ST::rows * ST::cols * 6 / 8) / (bytes_per_thread * N_THREADS);
     static_assert(memcpy_per_tile * bytes_per_thread * N_THREADS == ST::rows * ST::cols * 6 / 8, "memcpy_per_tile * bytes_per_thread * N_THREADS != ST::rows * ST::cols * 6 / 8");
 
@@ -83,7 +83,7 @@ llvm_amdgcn_raw_buffer_load_lds(int32x4_t rsrc, // does not change (buffer resou
  {
  
     using U = typename ST::dtype;
-    constexpr int bytes_per_thread = 16;
+    constexpr int bytes_per_thread = 12;
     constexpr int memcpy_per_tile =  (ST::rows * ST::cols * 6 / 8) / (bytes_per_thread * N_THREADS);
     static_assert(memcpy_per_tile * bytes_per_thread * N_THREADS == ST::rows * ST::cols * 6 / 8, "memcpy_per_tile * bytes_per_thread * N_THREADS != ST::rows * ST::cols * 6 / 8");     
     
@@ -103,6 +103,7 @@ llvm_amdgcn_raw_buffer_load_lds(int32x4_t rsrc, // does not change (buffer resou
      for (int i = 0; i < memcpy_per_tile; i++) {
 
         const uint8_t* lds_elem_ptr = lds_base + i * N_THREADS * bytes_per_thread;
+        as3_uint32_ptr lds_ptr = (as3_uint32_ptr)reinterpret_cast<uintptr_t>(lds_elem_ptr);
         
         // Split the 12-byte load into three 4-byte loads
         as3_uint32_ptr lds_ptr0 = (as3_uint32_ptr)reinterpret_cast<uintptr_t>(lds_elem_ptr);
@@ -127,9 +128,8 @@ llvm_amdgcn_raw_buffer_load_lds(int32x4_t rsrc, // does not change (buffer resou
     }
 }
 
-
 /**
-* @brief Load data from a shared tile into a register tile.
+* @brief Load data from a shared tile into a register tile with 4-byte load layout.
 *
 * @tparam RT The register tile type
 * @tparam ST The shared tile type
@@ -145,9 +145,16 @@ __device__ inline static void load_lds_reg_row_fp6(RT &dst, const ST &src) {
     using U  = ST::dtype;
     const int laneid = kittens::laneid();
     auto* lds_bytes = reinterpret_cast<const uint8_t*>(&src.data[0]);
-    const uint32_t addr = reinterpret_cast<uintptr_t>(lds_bytes + laneid * 16);
 
-    const int subtile_stride = kittens::TILE_ROW_DIM<U> * kittens::TILE_COL_DIM<U> * sizeof(U) / 2;
+    // Adjust addressing for 4-byte load layout
+    // When using 4-byte loads, the hardware places data with (TIDinWave * 4) stride
+    // We need to calculate where our 12-byte chunk actually starts
+    const int row_offset = laneid % 32;
+    const int col_offset = 32 * (laneid / 32);
+    const int byte_offset = (row_offset * kittens::TILE_COL_DIM<U> + col_offset) * 6 / 8;
+    const uint32_t addr = reinterpret_cast<uintptr_t>(lds_bytes + byte_offset);
+
+    const int subtile_stride = kittens::TILE_ROW_DIM<U> * kittens::TILE_COL_DIM<U> * 6 / 8 / 2;
     const int tile_stride = subtile_stride * 2;
     const int row_stride = tile_stride * src.underlying_width;
 
@@ -171,6 +178,7 @@ __device__ inline static void load_lds_reg_row_fp6(RT &dst, const ST &src) {
         }
     }
 }
+
 
 template<int axis, ducks::rt::row_layout RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
 __device__ inline static void store_fp6(const GL &dst, const RT &src, const COORD &idx) {

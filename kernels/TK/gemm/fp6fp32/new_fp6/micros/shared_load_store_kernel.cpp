@@ -43,15 +43,22 @@ void micro_tk(const micro_globals g) {
 
     const int row = blockIdx.x;
 
+    int condition = (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0);
+
     // Info
     const int warp_id = warpid();
     const int warp_row = warp_id / 4;
     const int num_tiles = K / K_STEP;
     const int num_slices = K_STEP / DOT_SLICE;
 
-    constexpr int bytes_per_thread = 16;
+
+    constexpr int bytes_per_thread = 12;
     constexpr int memcpy_per_tile = (BLOCK_SIZE * K_STEP * 6 / 8) / (bytes_per_thread * NUM_THREADS);
     uint32_t swizzled_offsets[memcpy_per_tile];
+
+    if (condition) {
+        printf("memcpy_per_tile: %d\n", memcpy_per_tile);
+    }
     
     // Use axis=2 (like your working global-to-register code)
     prefill_swizzled_offsets_fp6<2, false, st_f6<BLOCK_SIZE, K_STEP>, _gl_tile_in, coord<st_f6<BLOCK_SIZE, K_STEP>>, NUM_THREADS>(
