@@ -1,6 +1,6 @@
 
 #include "kittens.cuh"
-#include "experimental_utils.cpp"
+#include "dword_utils.cpp"
 #include <random>
 #include <omp.h>
 #include <cstring>

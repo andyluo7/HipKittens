@@ -1,5 +1,5 @@
 #include "kittens.cuh"
-#include "experimental_utils.cpp"
+#include "../dword_utils.cpp"
 #include <random>
 using namespace kittens;
 
@@ -186,6 +186,15 @@ int main() {
     }
 
     std::cout << "Number of correct: " << large_diffs << " / " << M * K << std::endl;
+
+    // // Print the entire output
+    // for (int i = 0; i < M * K; i++) {
+    //     std::cout << float(h_output[i]) << " ";
+    //     if ((i + 1) % K == 0) {
+    //         std::cout << std::endl;
+    //     }
+    // }
+    // std::cout << std::endl;
 
     // Clean up (remove the h_input_float delete)
     hipFree(d_input_packed);
