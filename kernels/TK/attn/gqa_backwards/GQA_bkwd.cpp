@@ -56,13 +56,9 @@ __global__ void attend_bwd_dq_ker(const attn_globals<D> g) {
     copy(dO_float, dO_reg);
     copy(O_float, O_reg);
     
-    mul(tmp_float, dO_float, O_float);
+    mul(tmp_float, dO_float, O_float); // (first TK kernel does this).
     attn_tile<D,float,row_l>::col_vec delta_vec;
     row_sum(delta_vec, tmp_float); 
-
-    /* TODO: Fix vector shapes. */
-    one(l_vec);
-    one(m_vec);
     one(delta_vec);
 
     int num_blocks = ATTN_N/BLOCK_SIZE;
@@ -86,12 +82,10 @@ __global__ void attend_bwd_dq_ker(const attn_globals<D> g) {
         attn_tile<D,float,accum_col_l> P; 
         copy(P, S);
 
-        // dOVt = dO_i V_j^T
+        // dS = P ⊙ (dO_i V_j^T - Delta)
         attn_tile<D,float,accum_col_l> dOVt; 
         zero(dOVt);
         mma_ABt(dOVt, dO_reg, v_reg, dOVt);
-
-        // dS = P ⊙ (dOVt - Delta)
         sub_col(dOVt, dOVt, delta_vec);
         mul(dOVt, dOVt, P);
 
@@ -122,8 +116,6 @@ template<int D>
 struct bwd_dkv_globals {
     gl<bf16, -1, -1, -1, -1> Qg, Kg, Vg, Og, dOg, dKg, dVg;
     gl<bf16, -1, -1, -1, 1> m_vec, l_vec;   
-
-    gl<bf16, -1, -1, -1, -1> test;
     dim3 grid()  const { return dim3(ATTN_B, ATTN_H, ATTN_N / BLOCK_SIZE); }
     dim3 block() const { return dim3(NUM_THREADS); }
     size_t dynamic_shared_memory() const { return MAX_SHARED_MEMORY-32000; }
@@ -162,8 +154,6 @@ __global__ void attend_bwd_dkv_ker(const bwd_dkv_globals<D> g) {
         load(O_f,    g.Og,    {b,h,i,0});
         load(m_vec,  g.m_vec, {b,h,i,0});
         load(l_vec,  g.l_vec, {b,h,i,0});
-        one(l_vec);
-        one(m_vec);
         
         // P_ij
         attn_tile<D,float,accum_col_l> S; 
@@ -199,7 +189,8 @@ __global__ void attend_bwd_dkv_ker(const bwd_dkv_globals<D> g) {
         one(delta_vec);
         
         // dS = P ⊙ (dO_i V_j^T − Delta)
-        attn_tile<D,float,accum_col_l> dOVt; zero(dOVt);
+        attn_tile<D,float,accum_col_l> dOVt; 
+        zero(dOVt);
         mma_ABt(dOVt, dO_bf16, v_reg, dOVt); 
         sub_col(dOVt, dOVt, delta_vec);
         mul(dOVt, dOVt, P);
@@ -225,8 +216,6 @@ __global__ void attend_bwd_dkv_ker(const bwd_dkv_globals<D> g) {
     copy(dK_bf16, dK_acc);
     store(g.dKg, dK_bf16, {b,h,j,0});
 }
-
-
 
 /*******************************************
 * Dispatch functions
@@ -271,8 +260,7 @@ PYBIND11_MODULE(tk_kernel, m) {
         &bwd_dkv_globals<ATTN_D>::dKg, 
         &bwd_dkv_globals<ATTN_D>::dVg, 
         &bwd_dkv_globals<ATTN_D>::m_vec, 
-        &bwd_dkv_globals<ATTN_D>::l_vec,
-        &bwd_dkv_globals<ATTN_D>::test
+        &bwd_dkv_globals<ATTN_D>::l_vec
     );
 }
 
