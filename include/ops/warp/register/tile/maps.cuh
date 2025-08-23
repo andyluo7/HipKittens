@@ -346,14 +346,6 @@ __device__ static inline void col_map(T &dst, const T &src, const V &col_values)
 template<typename op, ducks::rt::accumulator_col_layout T, ducks::rv::all V>
 __device__ static inline void col_map(T &dst, const T &src, const V &col_values) {
 
-<<<<<<< HEAD
-    static_assert(std::is_same_v<typename V::layout, typename rt_base<typename T::T, typename T::layout>::row_vec_layout>); // compatible layout
-    static_assert(std::is_same_v<typename V::T2, typename T::dtype>); // compatible type
-    static_assert(V::outer_dim == T::width); // compatible size
-
-    using dtype_vec = V::dtype;
-=======
->>>>>>> 32488060d6775cb416ec6c745098428c96e5e240
     using dtype = T::dtype;
     using RT = V::dtype;
     using RT2 = base_types::packing<RT>::packed_type;
@@ -364,21 +356,12 @@ __device__ static inline void col_map(T &dst, const T &src, const V &col_values)
 
     #pragma unroll
     for(int j = 0; j < dst.width; j++) {
-<<<<<<< HEAD
-        dtype_vec col_val = col_values[j][0];
-        dtype packed_val    = base_types::packing<dtype>::pack(col_val); //  first value in eager mode
-=======
         dtype packed_col  = base_types::packing<dtype>::pack(col_values[j][0]); //  first value in eager mode
->>>>>>> 32488060d6775cb416ec6c745098428c96e5e240
         #pragma unroll
         for(int i = 0; i < dst.height; i++) {
             #pragma unroll
             for(int k = 0; k < dst.packed_per_tile; k++) {
-<<<<<<< HEAD
-                dst.tiles[i][j].data[k+0] = op::template op<dtype>(src.tiles[i][j].data[k], packed_val);
-=======
                 dst.tiles[i][j].data[k] = op::template op<dtype>(src.tiles[i][j].data[k], packed_col);
->>>>>>> 32488060d6775cb416ec6c745098428c96e5e240
             }
         }
     }
