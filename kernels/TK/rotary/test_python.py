@@ -9,7 +9,7 @@ import tk_kernel
 
 B = 1
 H = 1
-N = 2048
+N = 64
 D = 64
 
 D_2 = D // 2
@@ -45,9 +45,8 @@ def get_output(x, rotary_emb_base=10000, rotary_emb_dim=D, dtype=torch.bfloat16)
 o, ro_dim, cos_in, sin_in = get_output(x)
 
 o_tk = torch.zeros_like(o).bfloat16()
-sin_tk = torch.zeros_like(sin_in).bfloat16()
-cos_tk = torch.zeros_like(cos_in).bfloat16()
-
+sin_tk = sin_in.to(torch.bfloat16).cuda()
+cos_tk = cos_in.to(torch.bfloat16).cuda()
 tk_kernel.dispatch_rotary(x, o_tk, sin_tk, cos_tk)
 
 # Compare
@@ -56,5 +55,9 @@ print("o: ", o[0, 0, 0, :8])
 print("o_tk: ", o_tk[0, 0, 0, :8])
 print("o_diff: ", o_diff[0, 0, 0, :8])
 
-
+max_diff = o_diff.abs().max().item()
+print("max_diff: ", max_diff)
     
+# breakpoint()
+
+
