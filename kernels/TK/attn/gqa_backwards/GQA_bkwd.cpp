@@ -36,27 +36,23 @@ __global__ void attend_bwd_dq_ker(const attn_globals<D> g) {
     // tiles
     qkvo_tile<D, bf16, row_l> q_reg, k_reg, v_reg;
     qkvo_tile<D, bf16, col_l> k_reg_col;
-    qkvo_tile<D, bf16, row_l> dO_reg, O_reg;
+    qkvo_tile<D, bf16, row_l> dO_reg;
     qkvo_tile<D, float, accum_col_l> dQ_acc; 
+    qkvo_tile<D, float, row_l> tmp_float;
+    qkvo_tile<D, float, row_l> dO_float, O_float;
     zero(dQ_acc);
 
     // load Q_i, dO_i, O_i, and stats (m,l)
     load(q_reg,  g.Qg,  {b,h,i,0});
     load(dO_reg, g.dOg, {b,h,i,0});
-    load(O_reg,  g.Og,  {b,h,i,0});
+    load(O_float,  g.Og,  {b,h,i,0});
     typename attn_tile<D,float,col_l>::col_vec m_vec, l_vec;
     load(m_vec, g.m_vec, {b,h,i,0});
     load(l_vec, g.l_vec, {b,h,i,0});
-
+    
     // Δ_i = row_sum(dO ⊙ O) 
-    qkvo_tile<D, float, row_l> tmp_float;
-    qkvo_tile<D, float, row_l> dO_float, O_float;
-    
-    // Convert to float for computation
     copy(dO_float, dO_reg);
-    copy(O_float, O_reg);
-    
-    mul(tmp_float, dO_float, O_float); // (first TK kernel does this).
+    mul(tmp_float, dO_float, O_float);
     attn_tile<D,float,row_l>::col_vec delta_vec;
     row_sum(delta_vec, tmp_float); 
 
@@ -78,36 +74,26 @@ __global__ void attend_bwd_dq_ker(const attn_globals<D> g) {
         sub_row(S, S, m_vec);
         exp(S, S);
         div_row(S, S, l_vec);
-        attn_tile<D,float,accum_col_l> P; 
-        copy(P, S);
 
         // dS = P ⊙ (dO_i V_j^T - Delta)
         attn_tile<D,float,accum_col_l> dOVt; 
         zero(dOVt);
         mma_ABt(dOVt, dO_reg, v_reg, dOVt);
         sub_col(dOVt, dOVt, delta_vec);
-        mul(dOVt, dOVt, P);
+        mul(dOVt, dOVt, S);
 
         // dQ += dS K_j * scale
-        qkvo_tile<D,float,accum_col_l> dQ_blk; 
-        zero(dQ_blk);
-        
         // Convert dOVt to row layout
         attn_tile<D,float,row_l> dOVt_row;
         swap_layout(dOVt_row, dOVt);
+        mul(dOVt_row, dOVt_row, scale_factor);
         // Convert to bf16 for MMA operation
         attn_tile<D,bf16,row_l> dOVt_bf16_row;
         copy(dOVt_bf16_row, dOVt_row);
-        
-        mma_AB(dQ_blk, dOVt_bf16_row, k_reg_col, dQ_blk);
-        mul(dQ_blk, dQ_blk, scale_factor);
-        add(dQ_acc, dQ_acc, dQ_blk);
+        mma_AB(dQ_acc, dOVt_bf16_row, k_reg_col, dQ_acc);
     }
 
-    // store dQ (bf16)
-    qkvo_tile<D,bf16,accum_col_l> dQ_reg; 
-    copy(dQ_reg, dQ_acc);
-    store(g.dQg, dQ_reg, {b,h,i,0});
+    store(g.dQg, dQ_acc, {b,h,i,0});
 }
 
 
@@ -162,23 +148,18 @@ __global__ void attend_bwd_dkv_ker(const bwd_dkv_globals<D> g) {
         sub_row(S, S, m_vec);
         exp(S, S);
         div_row(S, S, l_vec); 
-        attn_tile<D,float,accum_col_l> P; 
-        copy(P, S);
-        
+
         // dV += P^T dO_i
         attn_tile<D,bf16,accum_col_l> P_bf16; 
-        copy(P_bf16, P);
+        copy(P_bf16, S);
         attn_tile<D,bf16,col_l> P_bf16_col;
         swap_layout(P_bf16_col, P_bf16);
         
-        qkvo_tile<D,float,accum_col_l> dV_blk; 
-        zero(dV_blk);
         qkvo_tile<D,bf16,row_l> dO_bf16;
         copy(dO_bf16, dO_f);
         qkvo_tile<D,bf16,col_l> dO_bf16_col;
         swap_layout(dO_bf16_col, dO_bf16);
-        mma_AtB(dV_blk, P_bf16_col, dO_bf16_col, dV_blk); 
-        add(dV_acc, dV_acc, dV_blk);
+        mma_AtB(dV_acc, P_bf16_col, dO_bf16_col, dV_acc); 
 
         // Delta_i
         qkvo_tile<D,float,row_l> tmp;
@@ -191,28 +172,20 @@ __global__ void attend_bwd_dkv_ker(const bwd_dkv_globals<D> g) {
         zero(dOVt);
         mma_ABt(dOVt, dO_bf16, v_reg, dOVt); 
         sub_col(dOVt, dOVt, delta_vec);
-        mul(dOVt, dOVt, P);
+        mul(dOVt, dOVt, S);
         
         // dK += dS^T Q_i * scale
+        mul(dOVt, dOVt, scale);
         attn_tile<D,bf16,accum_col_l> dS_bf16; 
         copy(dS_bf16, dOVt);
         auto dS_bf16_row = swap_layout_inplace<col_l>(dS_bf16);
-        qkvo_tile<D,float,accum_col_l> dK_blk; 
-        zero(dK_blk);
         qkvo_tile<D,bf16,col_l> q_bf16_col;
         swap_layout(q_bf16_col, q_reg);
-        mma_AtB(dK_blk, dS_bf16_row, q_bf16_col, dK_blk);
-        mul(dK_blk, dK_blk, scale);
-        add(dK_acc, dK_acc, dK_blk);
+        mma_AtB(dK_acc, dS_bf16_row, q_bf16_col, dK_acc);
     }
 
-    // store dK,dV (bf16)
-    qkvo_tile<D,bf16,accum_col_l> dV_bf16; 
-    copy(dV_bf16, dV_acc);
-    store(g.dVg, dV_bf16, {b,h,j,0});
-    qkvo_tile<D,bf16,accum_col_l> dK_bf16; 
-    copy(dK_bf16, dK_acc);
-    store(g.dKg, dK_bf16, {b,h,j,0});
+    store(g.dVg, dV_acc, {b,h,j,0});
+    store(g.dKg, dK_acc, {b,h,j,0});
 }
 
 /*******************************************

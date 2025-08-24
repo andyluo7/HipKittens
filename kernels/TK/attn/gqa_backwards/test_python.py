@@ -242,6 +242,8 @@ for _ in range(num_warmup):
     V_tk = V_bhnd.bfloat16().clone().contiguous().detach().requires_grad_(True)  
     dO_tk = dO_bhnd.bfloat16().clone().contiguous() 
     dQ_tk = torch.zeros_like(q_grad_tiled_bhnd).bfloat16()
+    dK_tk = torch.zeros_like(k_grad_tiled_bhnd).bfloat16()
+    dV_tk = torch.zeros_like(v_grad_tiled_bhnd).bfloat16()
     tk_kernel.dispatch_micro(
         Q_tk,     # Qg
         K_tk,     # Kg
@@ -252,9 +254,6 @@ for _ in range(num_warmup):
         m_tk,  # m_vec
         l_tk
     )
-
-    dK_tk = torch.zeros_like(k_grad_tiled_bhnd).bfloat16()
-    dV_tk = torch.zeros_like(v_grad_tiled_bhnd).bfloat16()
     tk_kernel.dispatch_bwd_dkv(
         Q_tk,     # Qg
         K_tk,     # Kg
@@ -273,6 +272,8 @@ for _ in range(num_iters):
     V_tk = V_bhnd.bfloat16().clone().contiguous().detach().requires_grad_(True)  
     dO_tk = dO_bhnd.bfloat16().clone().contiguous() 
     dQ_tk = torch.zeros_like(q_grad_tiled_bhnd).bfloat16()
+    dK_tk = torch.zeros_like(k_grad_tiled_bhnd).bfloat16()
+    dV_tk = torch.zeros_like(v_grad_tiled_bhnd).bfloat16()
     torch.cuda.synchronize()
     start_event.record()
     tk_kernel.dispatch_micro(
@@ -285,8 +286,6 @@ for _ in range(num_iters):
         m_tk,  # m_vec
         l_tk
     )
-    dK_tk = torch.zeros_like(k_grad_tiled_bhnd).bfloat16()
-    dV_tk = torch.zeros_like(v_grad_tiled_bhnd).bfloat16()
     tk_kernel.dispatch_bwd_dkv(
         Q_tk,     # Qg
         K_tk,     # Kg
@@ -295,7 +294,7 @@ for _ in range(num_iters):
         dO_tk,    # dOg
         dK_tk,    # dKg (output)
         dV_tk,    # dVg (output)
-        m_tk,  # m_vec
+        m_tk,     # m_vec
         l_tk
     )
     end_event.record()
