@@ -238,6 +238,65 @@ __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
 
 
 #ifdef KITTENS_CDNA4
+template<int axis, ducks::rt::accumulator_row_layout RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
+__device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
+    using T2 = RT::dtype;
+    using U = typename GL::dtype;
+    using U2 = base_types::packing<U>::packed_type;
+
+    U *src_ptr = (U*)&src[(idx.template unit_coord<axis, 3>())];
+    const int row_stride = src.template stride<axis>();
+    int laneid = kittens::laneid();
+
+    int row_offset = laneid%32, col_offset = 4*(laneid/32);
+    
+
+    uint32_t buffer_size = src.batch() * src.depth() * src.rows() * src.cols() * sizeof(U);
+    std::uintptr_t as_int = reinterpret_cast<std::uintptr_t>(src_ptr);
+    std::uint64_t  as_u64 = static_cast<std::uint64_t>(as_int);    // widen if host is 32-bit
+    buffer_resource br = make_buffer_resource(as_u64, buffer_size, 0x00020000);
+
+    #pragma unroll
+    for(int i = 0; i < dst.height; i++) {
+        int row = dst.tile_size_row*i + row_offset;
+
+        #pragma unroll
+        for(int j = 0; j < dst.width; j++) {
+
+            #pragma unroll
+            for (int k = 0; k < 4; k++) {
+                int col = dst.tile_size_col*j + col_offset + k*8;
+
+                U2* tmp;
+                if constexpr (sizeof(U2) == 4) { // bf16_2
+                    float2 loaded = std::bit_cast<float2>(llvm_amdgcn_raw_buffer_load_b64(
+                        std::bit_cast<i32x4>(br),
+                        (row*row_stride + col) * sizeof(U),
+                        0,
+                        0
+                    ));
+                    tmp = reinterpret_cast<U2*>(&loaded);
+                }
+                else { // float2
+                    float4 loaded;
+                    loaded = std::bit_cast<float4>(llvm_amdgcn_raw_buffer_load_b128(
+                        std::bit_cast<i32x4>(br),
+                        (row*row_stride + col) * sizeof(U),
+                        0,
+                        0
+                    ));
+                    tmp = reinterpret_cast<U2*>(&loaded);
+                }
+                #pragma unroll
+                for(int l = 0; l < 2; l++) {
+                    dst.tiles[i][j].data[k*2 + l] = base_types::convertor<T2, U2>::convert(tmp[l]);
+                }
+            }
+
+        }
+    }
+}
+
 template<int axis, ducks::rt::accumulator_col_layout RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
 __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
     using T = base_types::packing<typename RT::dtype>::unpacked_type;
@@ -432,35 +491,6 @@ __device__ inline static void store(const GL &dst, const RT &src, const COORD &i
 #endif
 
 #ifdef KITTENS_CDNA4
-template<int axis, ducks::rt::accumulator_col_layout RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
-__device__ inline static void store(const GL &dst, const RT &src, const COORD &idx) {
-    using T = base_types::packing<typename RT::dtype>::unpacked_type;
-    using U = typename GL::dtype;
-
-    U *dst_ptr = (U*)&dst[(idx.template unit_coord<axis, 3>())];
-    const int row_stride = dst.template stride<axis>();
-    int laneid = kittens::laneid();
-
-    int col_offset = laneid%32;
-    int row_offset = laneid/32;
-
-    #pragma unroll
-    for(int i = 0; i < src.height; i++) {
-        #pragma unroll
-        for(int j = 0; j < src.width; j++) {
-            int col = src.tile_size_col*j + col_offset;
-            #pragma unroll
-            for (int ii = 0; ii < 4; ii++) {
-                int row = src.tile_size_row*i + ii * 8 + row_offset * 4;
-
-                dst_ptr[(row+0)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2].x);
-                dst_ptr[(row+1)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2].y);
-                dst_ptr[(row+2)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2 + 1].x);
-                dst_ptr[(row+3)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2 + 1].y);
-            }
-        }
-    }
-}
 template<int axis, ducks::rt::accumulator_row_layout RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
 __device__ inline static void store(const GL &dst, const RT &src, const COORD &idx) {
     using T2 = RT::dtype;
@@ -489,7 +519,43 @@ __device__ inline static void store(const GL &dst, const RT &src, const COORD &i
 
                 data[0] = base_types::convertor<U2, T2>::convert(src.tiles[i][j].data[jj * 2]);
                 data[1] = base_types::convertor<U2, T2>::convert(src.tiles[i][j].data[jj * 2 + 1]);
-                kittens::llvm_amdgcn_raw_buffer_store_b64(*(uint64_t*)&data, srsrc, (row*row_stride + col + (jj * 8)) * sizeof(U), 0, static_cast<int>(kittens::coherency::cache_all));
+
+                if constexpr (sizeof(U2) == 4) { // bf16_2
+                    kittens::llvm_amdgcn_raw_buffer_store_b64(*(uint64_t*)&data, srsrc, (row*row_stride + col + (jj * 8)) * sizeof(U), 0, static_cast<int>(kittens::coherency::cache_all));
+                }
+                else { // float2
+                    kittens::llvm_amdgcn_raw_buffer_store_b128(*(__uint128_t*)&data, srsrc, (row*row_stride + col + (jj * 8)) * sizeof(U), 0, static_cast<int>(kittens::coherency::cache_all));
+                }
+            }
+        }
+    }
+}
+
+template<int axis, ducks::rt::accumulator_col_layout RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
+__device__ inline static void store(const GL &dst, const RT &src, const COORD &idx) {
+    using T = base_types::packing<typename RT::dtype>::unpacked_type;
+    using U = typename GL::dtype;
+
+    U *dst_ptr = (U*)&dst[(idx.template unit_coord<axis, 3>())];
+    const int row_stride = dst.template stride<axis>();
+    int laneid = kittens::laneid();
+
+    int col_offset = laneid%32;
+    int row_offset = laneid/32;
+
+    #pragma unroll
+    for(int i = 0; i < src.height; i++) {
+        #pragma unroll
+        for(int j = 0; j < src.width; j++) {
+            int col = src.tile_size_col*j + col_offset;
+            #pragma unroll
+            for (int ii = 0; ii < 4; ii++) {
+                int row = src.tile_size_row*i + ii * 8 + row_offset * 4;
+
+                dst_ptr[(row+0)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2].x);
+                dst_ptr[(row+1)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2].y);
+                dst_ptr[(row+2)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2 + 1].x);
+                dst_ptr[(row+3)*row_stride + col] = base_types::convertor<U, T>::convert(src.tiles[i][j].data[ii * 2 + 1].y);
             }
         }
     }
