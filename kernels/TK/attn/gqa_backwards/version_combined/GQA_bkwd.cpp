@@ -89,7 +89,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
     load(Oi_reg,  g.O,  {b,h,i,0});
     
     // Load statistics for block i
-    typename attn_tile<D,float,col_l>::col_vec mi_vec, li_vec;
+    typename attn_tile<D,float,accum_col_l>::col_vec mi_vec, li_vec;
     load(mi_vec, g.m_vec, {b,h,i,0});
     load(li_vec, g.l_vec, {b,h,i,0});
     typename attn_tile<D,float,accum_col_l>::col_vec deltai_vec;
@@ -118,9 +118,9 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
         mul(S_ij, S_ij, scale_factor);
 
         // P_ij = exp(S_ij - m_i) / l_i
-        // sub_row(S_ij, S_ij, mi_vec);
+        sub_row(S_ij, S_ij, mi_vec);
         exp(S_ij, S_ij);
-        // div_row(S_ij, S_ij, li_vec);
+        div_row(S_ij, S_ij, li_vec);
 
         // dS_ij = P_ij ⊙ (dO_i V_j^T - Delta_i)
         attn_tile<D,float,accum_col_l> dOVt; 
@@ -128,7 +128,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
         qkvo_tile<D,bf16,row_l> dOi_reg_bf16;
         copy(dOi_reg_bf16, dOi_reg);
         mma_ABt(dOVt, dOi_reg_bf16, vj_reg, dOVt);
-        // sub_row(dOVt, dOVt, deltai_vec);
+        sub_row(dOVt, dOVt, deltai_vec);
         mul(dOVt, dOVt, S_ij);
 
         // dQ_i += dS_ij K_j * scale
@@ -143,7 +143,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
         // Load Q_j, dO_j, O_j and their statistics
         qkvo_tile<D, bf16, row_l> qj_reg;
         qkvo_tile<D, float, row_l> dOj_reg, Oj_reg;
-        typename attn_tile<D,float,col_l>::col_vec mj_vec, lj_vec;
+        typename attn_tile<D,float,accum_col_l>::col_vec mj_vec, lj_vec;
         typename attn_tile<D,float,accum_col_l>::col_vec deltaj_vec;
         
         load(qj_reg,  g.Q,    {b,h,j,0});
@@ -158,9 +158,9 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
         zero(S_ji);
         mma_ABt(S_ji, qj_reg, ki_reg, S_ji);
         mul(S_ji, S_ji, scale_factor);
-        // sub_row(S_ji, S_ji, mj_vec);
+        sub_row(S_ji, S_ji, mj_vec);
         exp(S_ji, S_ji);
-        // div_row(S_ji, S_ji, lj_vec); 
+        div_row(S_ji, S_ji, lj_vec); 
 
         // dV_i += P_ji^T dO_j
         attn_tile<D,bf16,accum_col_l> P_ji_bf16; 
@@ -178,7 +178,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
         attn_tile<D,float,accum_col_l> dOVt_ji; 
         zero(dOVt_ji);
         mma_ABt(dOVt_ji, dOj_bf16, vi_reg, dOVt_ji); 
-        // sub_row(dOVt_ji, dOVt_ji, deltaj_vec);
+        sub_row(dOVt_ji, dOVt_ji, deltaj_vec);
         mul(dOVt_ji, dOVt_ji, S_ji);
         
         // dK_i += dS_ji^T Q_j * scale
@@ -206,7 +206,6 @@ void dispatch_bwd_combined(attn_bwd_combined_globals<D> g) {
     hipDeviceSynchronize();
 }
 
-// Add to PYBIND11_MODULE:
 PYBIND11_MODULE(tk_kernel, m) {
     m.doc() = "tk_kernel python module";
 
@@ -216,7 +215,6 @@ PYBIND11_MODULE(tk_kernel, m) {
         &attn_prep_globals<ATTN_D>::delta
     );
 
-    // Combined backward pass kernel
     py::bind_function<dispatch_bwd_combined<ATTN_D>>(m, "dispatch_bwd_combined", 
         &attn_bwd_combined_globals<ATTN_D>::Q, 
         &attn_bwd_combined_globals<ATTN_D>::K, 

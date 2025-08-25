@@ -242,13 +242,11 @@ def test_dq(Q, K, V, dO, m, l):
     scale = 1.0 / math.sqrt(D)
     # Recompute scores and probabilities with saved m, l
     S = torch.matmul(Q, K.transpose(-2, -1)) * scale
-    # P = torch.exp(S - m.unsqueeze(-1)) / l.unsqueeze(-1)
-    P = torch.exp(S)
+    P = torch.exp(S - m.unsqueeze(-1)) / l.unsqueeze(-1)
     O = torch.matmul(P, V)
     # # softmax backward
     Delta = (dO * O).sum(dim=-1, keepdim=True)                 #
-    # dS = P * (torch.matmul(dO, V.transpose(-2, -1)) - Delta)   # (B, N, H, N)
-    dS = P * (torch.matmul(dO, V.transpose(-2, -1)))
+    dS = P * (torch.matmul(dO, V.transpose(-2, -1)) - Delta)   # (B, N, H, N)
     # chain rule through S = (Q K^T) * scale
     dQ = torch.matmul(dS, K) * scale
     return dQ
@@ -259,8 +257,7 @@ def test_dv(Q, K, V, dO, m, l):
     scale = 1.0 / math.sqrt(D)
     # Recompute scores and probabilities with saved m, l
     S = torch.matmul(Q, K.transpose(-2, -1)) * scale
-    # P = torch.exp(S - m.unsqueeze(-1)) / l.unsqueeze(-1)
-    P = torch.exp(S ) 
+    P = torch.exp(S - m.unsqueeze(-1)) / l.unsqueeze(-1)
     O = torch.matmul(P, V)
     # dV
     dV = torch.matmul(P.transpose(-2, -1), dO)
@@ -273,13 +270,11 @@ def test_dk(Q, K, V, dO, m, l):
     scale = 1.0 / math.sqrt(D)
     # Recompute scores and probabilities with saved m, l
     S = torch.matmul(Q, K.transpose(-2, -1)) * scale
-    # P = torch.exp(S- m.unsqueeze(-1)) / l.unsqueeze(-1)
-    P = torch.exp(S)
+    P = torch.exp(S- m.unsqueeze(-1)) / l.unsqueeze(-1)
     O = torch.matmul(P, V)
     # softmax backward
     Delta = (dO * O).sum(dim=-1, keepdim=True)                 # (B, N, H, 1)
-    # dS = P * (torch.matmul(dO, V.transpose(-2, -1)) - Delta)   # (B, N, H, N)
-    dS = P * (torch.matmul(dO, V.transpose(-2, -1)))
+    dS = P * (torch.matmul(dO, V.transpose(-2, -1)) - Delta)   # (B, N, H, N)
     dK = torch.matmul(dS.transpose(-2, -1), Q) * scale
     return dK
 

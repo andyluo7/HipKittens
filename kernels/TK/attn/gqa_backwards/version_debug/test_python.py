@@ -68,9 +68,6 @@ l_tiled = l_tiled.squeeze(-1)
 # Get forwards pass outputs
 Q_tk = Q_bhnd.bfloat16().clone().contiguous().detach().requires_grad_(True)  
 K_tk = K_bhnd.bfloat16().clone().contiguous().detach().requires_grad_(True)  
-V_tk = V_bhnd.bfloat16().clone().contiguous().detach().requires_grad_(True)  
-O_tk = O_tiled.bfloat16().clone()
-dO_tk = dO_bhnd.float().clone()
 m_tk = m_tiled.float().unsqueeze(-1)
 l_tk = l_tiled.float().unsqueeze(-1)
 print(m_tk.shape, l_tk.shape)
@@ -91,11 +88,7 @@ dQ_tk = torch.zeros_like(DQ)
 # TK
 tk_kernel.dispatch_bwd_combined(
     Q_tk,     
-    K_tk,     
-    V_tk,     
-    O_tk,  
-
-    dO_tk,    
+    K_tk,        
     dQ_tk,   
     m_tk, 
     l_tk,
