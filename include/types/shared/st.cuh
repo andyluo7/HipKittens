@@ -194,12 +194,18 @@ struct st_subtile {
     dtype *data;
     int row_offset, col_offset;
 
-    __device__ st_subtile(ST &src, int2 rowcol) {
+    __device__ st_subtile(ST &src, int2 rowcol, bool unformatted = false) {
         #ifdef KITTENS_CDNA4
         if constexpr (std::is_same_v<T, fp8e4m3>) {
-            row_offset = rowcol.x * height * underlying_width;
-            col_offset = rowcol.y * width;
-            data = &src.data[(row_offset + col_offset) * kittens::TILE_COL_DIM<T> * kittens::TILE_ROW_DIM<T> * sizeof(T)];
+            if (unformatted) {
+                row_offset = rowcol.x * height * kittens::TILE_ROW_DIM<T> * kittens::TILE_COL_DIM<T> * underlying_width * sizeof(T);
+                col_offset = rowcol.y * width * kittens::TILE_COL_DIM<T> * sizeof(T);
+                data = &src.data[row_offset + col_offset];
+            } else {
+                row_offset = rowcol.x * height * underlying_width;
+                col_offset = rowcol.y * width;
+                data = &src.data[(row_offset + col_offset) * kittens::TILE_COL_DIM<T> * kittens::TILE_ROW_DIM<T> * sizeof(T)];
+            }
         } else {
             row_offset = rowcol.x * rows;
             col_offset = rowcol.y * cols;
