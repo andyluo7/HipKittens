@@ -23,7 +23,7 @@ template<int D> struct attn_prep_globals {
     gl<float, -1, -1, -1, -1> delta;
     dim3 grid() { return dim3(ATTN_B, ATTN_H, ATTN_N / BLOCK_SIZE); }
     dim3 block() { return dim3(NUM_THREADS); }
-    size_t dynamic_shared_memory() { return MAX_SHARED_MEMORY-32000; }
+    size_t dynamic_shared_memory() { return MAX_SHARED_MEMORY - 32000; }
 };
 
 template<int D> __launch_bounds__(NUM_THREADS, 1)
@@ -87,7 +87,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
 
         // 9. Load Q_i, O_i, dO_i, dQ_i, l_i, m_i, delta_i from HBM to registers
         qkvo_tile<D, bf16, row_l> Q_i;
-        qkvo_tile<D, float, accum_col_l> dO_i;
+        qkvo_tile<D, bf16, accum_col_l> dO_i;
         attn_tile<D, float, accum_col_l>::col_vec l_i, m_i, delta_i;
         load(Q_i, g.Q, {b,h,i,0});
         load(dO_i, g.dOg, {b,h,i,0});
@@ -109,18 +109,15 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
         // 12. dV_j += P_ij^T @ dO_i
         attn_tile<D,bf16,accum_col_l> P_ij_bf16_acc_col;
         copy(P_ij_bf16_acc_col, S_ij);
-        qkvo_tile<D,bf16,accum_col_l> dO_i_bf16_acc_col;
-        copy(dO_i_bf16_acc_col, dO_i);
-        mma_AtB(dV_j, P_ij_bf16_acc_col, dO_i_bf16_acc_col, dV_j);
+        mma_AtB(dV_j, P_ij_bf16_acc_col, dO_i, dV_j);
 
         // 13. dP_ij = dO_i @ V_j^T
         attn_tile<D,float,accum_col_l> dP_ij;
         zero(dP_ij);
-        qkvo_tile<D,bf16,row_l> dO_i_bf16_row;
-        swap_layout(dO_i_bf16_row, dO_i_bf16_acc_col);
+        qkvo_tile<D,bf16,row_l> dO_i_bf16_row = swap_layout_inplace<row_l>(dO_i);
         mma_ABt(dP_ij, dO_i_bf16_row, V_j, dP_ij);
 
-        // 14. dS_ij = P_ij o (dO_i @ V_j^T - delta_i)
+        // 14. dS_ij = P_ij o (dP_ij - delta_i)
         sub_row(dP_ij, dP_ij, delta_i);
         mul(dP_ij, dP_ij, S_ij);
         mul(dP_ij, dP_ij, scale_factor);
@@ -130,18 +127,15 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
         load(dQ_i, g.dQg, {b,h,i,0});
         attn_tile<D, bf16, accum_col_l> dS_ij_bf16_acc_col;
         copy(dS_ij_bf16_acc_col, dP_ij);
-        attn_tile<D, bf16, row_l> dS_ij_bf16_row;
-        swap_layout(dS_ij_bf16_row, dS_ij_bf16_acc_col);
+        attn_tile<D, bf16, row_l> dS_ij_bf16_row = swap_layout_inplace<row_l>(dS_ij_bf16_acc_col);
         qkvo_tile<D, bf16, col_l> K_j_col;
         swap_layout(K_j_col, K_j);
         mma_AB(dQ_i, dS_ij_bf16_row, K_j_col, dQ_i);
         store(g.dQg, dQ_i, {b,h,i,0});
 
         // 16. dK_j += dS_ij^T @ Q_i
-        attn_tile<D,bf16,col_l> dS_ij_bf16_col;
-        swap_layout(dS_ij_bf16_col, dS_ij_bf16_acc_col);
-        qkvo_tile<D, bf16, col_l> Q_i_col;
-        swap_layout(Q_i_col, Q_i);
+        attn_tile<D,bf16,col_l> dS_ij_bf16_col = swap_layout_inplace<col_l>(dS_ij_bf16_row);
+        qkvo_tile<D, bf16, col_l> Q_i_col = swap_layout_inplace<col_l>(Q_i);
         mma_AtB(dK_j, dS_ij_bf16_col, Q_i_col, dK_j);
     }
 
