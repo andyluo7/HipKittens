@@ -123,7 +123,7 @@ def create_data_loader(df: pd.DataFrame, tokenizer, max_len: int, batch_size: in
         num_workers=2 if os.name != "nt" else 0,
         pin_memory=torch.cuda.is_available(),
         shuffle=True,
-        drop_last=False,
+        drop_last=True,
     )
 
 # ----------------------------
