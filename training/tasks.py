@@ -20,6 +20,7 @@ from transformers import (AutoTokenizer, AutoModel,get_linear_schedule_with_warm
 use_base = False
 use_aiter = False
 use_hipkittens = True 
+do_save = False # whether to save the best model ckpt
 PRE_TRAINED_MODEL_NAME = "bert-base-cased"
 EPOCHS = 10
 BATCH_SIZE = 16
@@ -51,7 +52,7 @@ torch.manual_seed(RANDOM_SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(RANDOM_SEED)
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ----------------------------
 # Data
@@ -64,10 +65,9 @@ df = pd.concat([df_train, df_test], ignore_index=True)
 df = df.rename(columns={"text": "review"})
 
 # ----------------------------
-# Tokenizer / lengths (optional sanity check)
+# Tokenizer / lengths (sanity check)
 # ----------------------------
 tokenizer = AutoTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
-# quick sanity encode
 _ = tokenizer(
     "I want to learn how to do sentiment analysis using BERT and tokenizer.",
     max_length=32,
@@ -158,9 +158,9 @@ class SentimentClassifier(nn.Module):
             vocab_size=len(tokenizer),
             hidden_size=128 * 64,  # h_q * d
             num_attention_heads=64,  # h_q
-            num_key_value_heads=8,  # h_kv (GQA)
+            num_key_value_heads=8,  # h_kv (gqa)
             num_hidden_layers=12,
-            intermediate_size=128 * 4 * 64,  # usually 4x hidden size
+            intermediate_size=128 * 4 * 64,  # 4x hidden size
             max_position_embeddings=MAX_LEN,
             hidden_dropout_prob=0.1,
             attention_probs_dropout_prob=0.1,
@@ -168,10 +168,8 @@ class SentimentClassifier(nn.Module):
         )
 
         self.bert = BertModel(config)
-        # self.bert = AutoModel.from_pretrained(model_name)
         self.drop = nn.Dropout(p=0.3)
         self.out = nn.Linear(config.hidden_size, n_classes)
-
         self._custom_init(mean=0.0, std=0.02)
 
     def _custom_init(self, mean=0.0, std=0.02):
@@ -189,9 +187,7 @@ class SentimentClassifier(nn.Module):
 
 print("Creating model...")
 class_names = ["negative", "positive"]
-# model = SentimentClassifier(PRE_TRAINED_MODEL_NAME, n_classes=len(class_names)).to(device)
 model = SentimentClassifier(tokenizer, n_classes=len(class_names)).to(device)
-
 for i, layer in enumerate(model.bert.encoder.layer):
     new_self = BertSelfAttention(model.bert.config, layer_idx=i)
     layer.attention.self = new_self
@@ -208,7 +204,6 @@ print("attention_mask shape:", _batch["attention_mask"].shape)
 # ----------------------------
 optimizer = AdamW(model.parameters(), lr=LR)
 total_steps = len(train_data_loader) * EPOCHS
-
 scheduler = get_linear_schedule_with_warmup(
     optimizer,
     num_warmup_steps=int(0.1 * total_steps),
@@ -227,6 +222,7 @@ def train_epoch(
     device,
     scheduler,
     n_examples: int,
+    limit: int = None,
 ) -> Tuple[float, float]:
     model.train()
     losses: List[float] = []
@@ -259,8 +255,12 @@ def train_epoch(
                 len(df_val),
                 limit=50,
             )
+            examples_so_far = i * BATCH_SIZE
             print(f"{i}: val acc: {val_acc:.4f}, val loss: {val_loss:.4f}")
-            print(f"{i}: train acc: {correct / float(n_examples):.4f}, train loss: {float(np.mean(losses)):.4f}")
+            print(f"{i}: train acc: {correct / float(examples_so_far):.4f}, train loss: {float(np.mean(losses)):.4f}")
+
+        if limit is not None and i >= limit:
+            break
 
     acc = correct / float(n_examples)
     return acc, float(np.mean(losses)) if losses else 0.0
@@ -337,6 +337,7 @@ for epoch in range(1, EPOCHS + 1):
         device,
         scheduler,
         len(df_train),
+        limit=None,
     )
     torch.cuda.synchronize()
     end_time = time.time()
@@ -348,6 +349,7 @@ for epoch in range(1, EPOCHS + 1):
         loss_fn,
         device,
         len(df_val),
+        limit=None,
     )
     print(f"Val   loss {val_loss:.4f} | acc {val_acc:.4f}\n")
 
@@ -365,8 +367,8 @@ for epoch in range(1, EPOCHS + 1):
         "runtime": end_time - start_time,
     })
 
-    if val_acc > best_val_acc:
-        torch.save(model.state_dict(), "best_model_state.bin")
+    if val_acc > best_val_acc and do_save:
+        torch.save(model.state_dict(), f"best_model_state.bin")
         best_val_acc = val_acc
 
 # ----------------------------
@@ -392,6 +394,7 @@ test_acc, _ = eval_model(
     loss_fn,
     device,
     len(df_test),
+    limit=None,
 )
 print("Test accuracy:", round(test_acc, 4))
 
