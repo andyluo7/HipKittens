@@ -6,13 +6,14 @@ import sys
 import math
 import tk_kernel
 import time
+import aiter
 
 B = 16
 H = 16
-N = 1024
+N = 4096
 HEAD_D = 64
 D = HEAD_D * H
-DROPOUT_P = 0.01
+DROPOUT_P = 0.00
 
 norm = nn.LayerNorm(D).cuda()
 torch.random.manual_seed(42)
@@ -82,9 +83,11 @@ flops_ref = flops(B, N, D)
 num_warmup = 50
 num_iters = 50
 
+
 # Benchmark and test correctness
 # PyTorch
 timings = []
+print("\nPyTorch:")
 for _ in range(num_warmup):
     o_ref, new_residual_ref = pytorch_ref(x, residual, norm)
 for _ in range(num_iters):
@@ -95,13 +98,36 @@ for _ in range(num_iters):
     torch.cuda.synchronize()
     elapsed_time = start_event.elapsed_time(end_event)
     timings.append(elapsed_time)
-
 avg_time = sum(timings) / len(timings)
 eff = efficiency(flops_ref, avg_time)
 print(f"PyTorch average execution time: {avg_time:.4f} ms")
 print(f"PyTorch performance: {eff:.2f} TFLOPS for {B=} {N=} {D=}.")
 
+
+#  PyTorch (Compiled)
+compiled_pytorch_ref = torch.compile(pytorch_ref)
+print("\nPyTorch (Compiled):")
+timings_compiled = []
+for _ in range(num_warmup):
+    o_compiled, new_residual_compiled = compiled_pytorch_ref(x, residual, norm)
+for _ in range(num_iters):
+    torch.cuda.synchronize()
+    start_event.record()
+    o_compiled, new_residual_compiled = compiled_pytorch_ref(x, residual, norm)
+    end_event.record()
+    torch.cuda.synchronize()
+    elapsed_time = start_event.elapsed_time(end_event)
+    timings_compiled.append(elapsed_time)
+avg_time_compiled = sum(timings_compiled) / len(timings_compiled)
+eff_compiled = efficiency(flops_ref, avg_time_compiled)
+print(f"PyTorch compiled average execution time: {avg_time_compiled:.4f} ms")
+print(f"PyTorch compiled performance: {eff_compiled:.2f} TFLOPS for {B=} {N=} {D=}.")
+speedup = avg_time / avg_time_compiled
+print(f"Speedup from torch.compile: {speedup:.2f}x")
+
+
 # TK
+print("\nTK (PyTorch):")
 o_tk = torch.zeros_like(o_ref).bfloat16()
 o_resid_tk = torch.zeros_like(new_residual_ref).bfloat16()
 norm_weight_tk = norm.weight.detach().clone().to(dtype=torch.bfloat16, device='cuda')
@@ -109,7 +135,6 @@ norm_bias_tk = norm.bias.detach().clone().to(dtype=torch.bfloat16, device='cuda'
 timings = []
 for _ in range(num_warmup):
     tk_kernel.dispatch_micro(x, residual, o_tk, o_resid_tk, norm_weight_tk, norm_bias_tk)
-print("done warmup")
 for _ in range(num_iters):
     torch.cuda.synchronize()
     start_event.record()
@@ -125,6 +150,7 @@ print(f"TK average execution time: {avg_time:.4f} ms")
 print(f"TK performance: {eff:.2f} TFLOPS for {B=} {N=} {D=}.")
 
 # Correctness
+print("\nCorrectness:")
 o_diff = o_ref - o_tk
 max_diff = o_diff.abs().max()
 print(f"max_diff: {max_diff}")

@@ -6,15 +6,36 @@
 
 constexpr int B = 16;
 constexpr int H = 16;
-constexpr int N = 1024;
+constexpr int N = 4096;
 constexpr int HEAD_D = 64;
 constexpr int D = HEAD_D * H;
+constexpr float DROPOUT_P = 0.00;
 
 
 #define NUM_WORKERS (4) 
 #define NUM_THREADS (NUM_WORKERS*kittens::WARP_THREADS)
 
 using namespace kittens;
+
+template<kittens::ducks::rv::all T>
+__device__ void dropout_mask(T &dst, float keep_prob) {
+    unsigned long long seed = 0;
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    rocrand_state_philox4x32_10 state;
+    rocrand_init(seed, idx, 0, &state);
+
+    #pragma unroll
+    for ( int i = 0 ; i < dst.outer_dim ; i ++ ) { 
+        #pragma unroll
+        for(int j = 0; j < dst.inner_dim; j++) {
+            float rand = rocrand_uniform(&state);
+            if (rand < keep_prob) {
+                dst[i][j] = base_types::constants<bf16>::zero();
+            }
+        }
+    }
+    mul(dst, dst, __float2bfloat16(1/(1-keep_prob)));
+}
 
 template<kittens::ducks::sv::all T>
 __device__ void dropout_mask(T &dst, float keep_prob) {
@@ -35,7 +56,6 @@ __device__ void dropout_mask(T &dst, float keep_prob) {
 
 template<int _d_model> struct norm_globals {
     static constexpr int d_model = _d_model;
-    static constexpr int dropout_p = 0.01;
 
     // global descriptors
     using x_gl            = gl<bf16, -1, -1, -1, -1>;
@@ -79,7 +99,10 @@ __global__ void layernorm_tk(const norm_globals<D> g) {
     vec_smem_1xD (&x_s)[NUM_WORKERS] = al.allocate<vec_smem_1xD,NUM_WORKERS>();
     vec_smem_1xD (&residual_s)[NUM_WORKERS] = al.allocate<vec_smem_1xD,NUM_WORKERS>();  
     vec_smem_1xD (&norm_weight_s) = al.allocate<vec_smem_1xD>(); 
-    vec_smem_1xD (&norm_bias_s  ) = al.allocate<vec_smem_1xD>();                  
+    vec_smem_1xD (&norm_bias_s  ) = al.allocate<vec_smem_1xD>();  
+    
+    using vec_reg_1xD = rv<bf16, d_model>;
+    vec_reg_1xD residual_s_reg, x_s_reg, norm_weight_s_reg, norm_bias_s_reg;
 
     // global loads
     if (warpid == 0) {
@@ -94,28 +117,35 @@ __global__ void layernorm_tk(const norm_globals<D> g) {
     int idx = seq_start + warpid;
     load(x_s[warpid], g.x, {0, batch, idx, 0});
     load(residual_s[warpid], g.residual, {0, batch, idx, 0});
+    load(residual_s_reg, residual_s[warpid]);
+    load(x_s_reg, x_s[warpid]);
+    load(norm_weight_s_reg, norm_weight_s);
+    load(norm_bias_s_reg, norm_bias_s);
+
     __syncthreads();
     
-    dropout_mask(x_s[warpid], g.dropout_p); 
-    add(residual_s[warpid], residual_s[warpid], x_s[warpid]);    
-    store(g.o_resid, residual_s[warpid], {0, batch, seq_start+warpid, 0});
+    if constexpr (DROPOUT_P > 0.0f) {
+        dropout_mask(x_s_reg, DROPOUT_P); 
+    }
+    add(residual_s_reg, residual_s_reg, x_s_reg);    
+    store(g.o_resid, residual_s_reg, {0, batch, seq_start+warpid, 0});
 
-    sum(mean, residual_s[warpid]);
+    sum(mean, residual_s_reg);
     mean = mean / __float2bfloat16(d_model);
-    sub(residual_s[warpid], residual_s[warpid], mean);  
-    mul(x_s[warpid], residual_s[warpid], residual_s[warpid]);
-    sum(var, x_s[warpid]);
+    sub(residual_s_reg, residual_s_reg, mean);  
+    mul(x_s_reg, residual_s_reg, residual_s_reg);
+    sum(var, x_s_reg);
     var = var / __float2bfloat16(d_model);
     var = __float2bfloat16(sqrt(__bfloat162float(var + __float2bfloat16(1e-05f))));
 
     // compute norm
-    div(residual_s[warpid], residual_s[warpid], var);
-    mul(residual_s[warpid], residual_s[warpid], norm_weight_s); 
-    add(residual_s[warpid], residual_s[warpid], norm_bias_s);
+    div(residual_s_reg, residual_s_reg, var);
+    mul(residual_s_reg, residual_s_reg, norm_weight_s_reg); 
+    add(residual_s_reg, residual_s_reg, norm_bias_s_reg);
     __syncthreads();
 
     // save output
-    store(g.o, residual_s[warpid], {0, batch, seq_start+warpid, 0});
+    store(g.o, residual_s_reg, {0, batch, seq_start+warpid, 0});
 }
 
 template<int D>
