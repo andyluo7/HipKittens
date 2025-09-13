@@ -2,6 +2,8 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
+colors = ["#7CB9BC", "#8E69B8", "#E59952", "#68AC5A"]
+
 
 for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
 
@@ -20,11 +22,11 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
 
     # Create bar chart
     x = np.arange(len(matrix_sizes))
-    width = 0.25
+    width = 0.3
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    bars0 = ax.bar(x - width, aiter_tflops, width, label='AITER (AMD)', alpha=0.8)
-    bars1 = ax.bar(x, tk_tflops, width, label='ThunderKittens', alpha=0.8)
+    bars0 = ax.bar(x - width, aiter_tflops, width, label='AITER (AMD)', alpha=0.8, color=colors[1])
+    bars1 = ax.bar(x, tk_tflops, width, label='ThunderKittens', alpha=0.8, color=colors[3])
 
     max_tflops = max(max(aiter_tflops), max(tk_tflops))
 
@@ -32,26 +34,28 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
     for bar, value in zip(bars0, aiter_tflops):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height + max_tflops * 0.01,
-                f'{value:.0f}', ha='center', va='bottom', fontsize=9)
+                f'{value:.0f}', ha='center', va='bottom', fontsize=12)
 
     for bar, value in zip(bars1, tk_tflops):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height + max_tflops * 0.01,
-                f'{value:.0f}', ha='center', va='bottom', fontsize=9)
+                f'{value:.0f}', ha='center', va='bottom', fontsize=12)
 
-    ax.set_xlabel('Sequence Length (N)')
-    ax.set_ylabel('Performance (TFLOPS)')
-    ax.set_title(f'Flash Attention Performance Comparison {device.upper()}')
+    # add some padding to the top of the y-axis to prevent label overlap
+    ax.set_ylim(0, max_tflops * 1.15)
+    ax.set_xlabel('Sequence Length (N)', fontsize=14)
+    ax.set_ylabel('Performance (TFLOPS)', fontsize=14)
+    ax.set_title(f'Attention Performance Comparison {device.upper()}', fontsize=16)
     ax.set_xticks(x)
     ax.set_xticklabels(matrix_sizes)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=14)
+    # ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.show()
 
     output_file = f'{device}_attn_plot.png'
-    plt.savefig(output_file)
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file}")
 
     # Print summary

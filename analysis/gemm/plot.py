@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+colors = ["#7CB9BC", "#8E69B8", "#E59952", "#68AC5A"]
+
+
 for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
 
     # Read data
@@ -30,22 +33,27 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
 
     # Create bar chart
     x = np.arange(len(matrix_sizes))
-    width = 0.2
+    width = 0.3
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    bars0 = ax.bar(x - width, pytorch_tflops, width, label='PyTorch', alpha=0.8)
+    bars0 = ax.bar(x - width, pytorch_tflops, width, label='PyTorch', alpha=0.8, color=colors[0])
      
     if aiter_tflops is not None:
-        bars1 = ax.bar(x, aiter_tflops, width, label='AITER (AMD)', alpha=0.8)
+        bars1 = ax.bar(x, aiter_tflops, width, label='AITER (AMD)', alpha=0.8, color=colors[1])
     else:
         bars1 = None
 
     if hipblaslt_tflops is not None:
-        bars2 = ax.bar(x + width, hipblaslt_tflops, width, label='HipblasLT', alpha=0.8)
+        bars2 = ax.bar(x + width, hipblaslt_tflops, width, label='HipblasLT', alpha=0.8, color=colors[2])
     else:
         bars2 = None
 
-    bars3 = ax.bar(x + 2 * width, tk_tflops, width, label='ThunderKittens', alpha=0.8)
+    if aiter_tflops is not None and hipblaslt_tflops is not None:
+        bars3 = ax.bar(x + 2 * width, tk_tflops, width, label='ThunderKittens', alpha=0.8, color=colors[3])
+    elif aiter_tflops is not None:
+        bars3 = ax.bar(x + width, tk_tflops, width, label='ThunderKittens', alpha=0.8, color=colors[3])
+    else:
+        bars3 = ax.bar(x, tk_tflops, width, label='ThunderKittens', alpha=0.8, color=colors[3])
 
     if aiter_tflops is not None:
         max_tflops = max(max(pytorch_tflops), max(aiter_tflops), max(tk_tflops))
@@ -60,38 +68,40 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
     for bar, value in zip(bars0, pytorch_tflops):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height + max_tflops * 0.01,
-                f'{value:.0f}', ha='center', va='bottom', fontsize=9)
+                f'{value:.0f}', ha='center', va='bottom', fontsize=12)
 
     if bars1 is not None:
         for bar, value in zip(bars1, aiter_tflops):
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height + max_tflops * 0.01,
-                    f'{value:.0f}', ha='center', va='bottom', fontsize=9)
+                    f'{value:.0f}', ha='center', va='bottom', fontsize=12)
 
     if hipblaslt_tflops is not None:
         for bar, value in zip(bars2, hipblaslt_tflops):
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height + max_tflops * 0.01,
-                    f'{value:.0f}', ha='center', va='bottom', fontsize=9)
+                    f'{value:.0f}', ha='center', va='bottom', fontsize=12)
 
     for bar, value in zip(bars3, tk_tflops):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height + max_tflops * 0.01,
-                f'{value:.0f}', ha='center', va='bottom', fontsize=9)
+                f'{value:.0f}', ha='center', va='bottom', fontsize=12)
 
-    ax.set_xlabel('Matrix Size (N×N)')
-    ax.set_ylabel('Performance (TFLOPS)')
-    ax.set_title(f'BF16 GEMM Performance Comparison {device.upper()}')
+    # add some padding to the top of the y-axis to prevent label overlap
+    ax.set_ylim(0, max_tflops * 1.15)
+    ax.set_xlabel('Matrix Size (N×N)', fontsize=14)
+    ax.set_ylabel('Performance (TFLOPS)', fontsize=14)
+    ax.set_title(f'BF16 GEMM Performance Comparison {device.upper()}', fontsize=16)
     ax.set_xticks(x)
     ax.set_xticklabels(matrix_sizes)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=14)
+    # ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.show()
 
     output_file = f'{device}_bf16_gemm_plot.png'
-    plt.savefig(output_file)
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file}")
 
     # Print summary
