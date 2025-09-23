@@ -96,7 +96,7 @@ void micro_tk(const micro_globals g) {
         #pragma unroll
         for (int n=0; n<N_BLOCK; ++n) 
             G::load<2,false>(Bs[tic][n], g.b, {0, 0, col+n, 0}, swizzled_offsets_B);
-        asm volatile("s_waitcnt vmcnt(1)");
+        asm volatile("s_waitcnt vmcnt(4)");
         if (warp_leader) atomicAdd((int*)&prod_cnt[0], 1);  
     }
     if (is_consumer) {  zero(C_accum);  }
@@ -118,11 +118,13 @@ void micro_tk(const micro_globals g) {
 
     if (is_producer) {
         #pragma unroll
-        for (int tile = 0; tile < num_tiles-1; ++tile, tic^=1, toc^=1) {
+        for (int tile = 0; tile < num_tiles-1; ++tile, toc^=1) {
         
             // Wait for consumers to finish with buffer
             const int target_1 = NUM_CONSUMER_WORKERS*(tile/2 + 1);
-            while (done[toc] < target_1) { __builtin_amdgcn_s_sleep(sleep_time); }
+            while (done[toc] < target_1) { 
+                __builtin_amdgcn_s_sleep(sleep_time); 
+            }
 
             // Load next tile
             #pragma unroll
@@ -133,10 +135,12 @@ void micro_tk(const micro_globals g) {
                 G::load<2,false>(As[toc][m], g.a, {0,0, row+m, tile+1}, swizzled_offsets_A);
             
             if (warp_leader) atomicAdd((int*)&prod_cnt[toc], 1);
-            asm volatile("s_waitcnt vmcnt(0)");
+            asm volatile("s_waitcnt vmcnt(4)");
 
             const int target_2 = NUM_PRODUCER_WORKERS*(tile/2 + 1);
-            while (prod_cnt[toc] < target_2) { __builtin_amdgcn_s_sleep(sleep_time);  } 
+            while (prod_cnt[toc] < target_2) { 
+                __builtin_amdgcn_s_sleep(sleep_time);  
+            } 
             if (warp_leader && warp_id == 0) { // First warp leader only
                 atomicExch((int*)&ready[toc], tile + 2);
             }
@@ -146,12 +150,11 @@ void micro_tk(const micro_globals g) {
 
     if (is_consumer) {
         #pragma unroll
-        for (int tile = 0; tile < num_tiles; ++tile, tic^=1, toc^=1) {
+        for (int tile = 0; tile < num_tiles; ++tile, tic^=1) {
             unsigned int* ready_ptr = &ready[tic];
-            while (*ready_ptr <= (unsigned)tile) {
-                __builtin_amdgcn_s_sleep(sleep_time);
+            while (*ready_ptr <= (unsigned)tile) { 
+                __builtin_amdgcn_s_sleep(sleep_time); 
             }
-            __threadfence_block();
 
             A_slice a0; 
             B_slice b0;
