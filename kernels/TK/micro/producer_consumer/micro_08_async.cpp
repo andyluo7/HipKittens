@@ -46,9 +46,9 @@ void micro_tk(const micro_globals g) {
 
     int wgid = (blockIdx.y * gridDim.x) + blockIdx.x;
     const int NUM_WGS  = gridDim.x * gridDim.y;
-    const int NUM_XCDS = 8;  
+    constexpr int NUM_XCDS = 8;  
     wgid = (wgid % NUM_XCDS) * (NUM_WGS / NUM_XCDS) + (wgid / NUM_XCDS);
-    const int WGM = 4;  
+    constexpr int WGM = 4;  
     const int num_pid_m = ceil_div(M, NEW_ROW_BLOCK_SIZE); // 7680 / 192 = 40
     const int num_pid_n = ceil_div(N, NEW_COL_BLOCK_SIZE); // 7680 / 256 = 30
     const int num_wgid_in_group = WGM * num_pid_n;
@@ -76,8 +76,10 @@ void micro_tk(const micro_globals g) {
     constexpr int memcpy_per_tile = BLOCK_SIZE * BLOCK_SIZE * sizeof(T) / bytes_per_memcpy;
     uint32_t swizzled_offsets_A[memcpy_per_tile];
     uint32_t swizzled_offsets_B[memcpy_per_tile];
-    G::prefill_swizzled_offsets(As[0][0], g.a, swizzled_offsets_A);
-    G::prefill_swizzled_offsets(Bs[0][0], g.b, swizzled_offsets_B);
+    if (is_producer) {
+        G::prefill_swizzled_offsets(As[0][0], g.a, swizzled_offsets_A);
+        G::prefill_swizzled_offsets(Bs[0][0], g.b, swizzled_offsets_B);
+    }
     A_slice A_tile;
     const lds_lane_ofs lane_ofs = prefill_swizzled_offsets(A_tile, As[0][0]);
 
@@ -96,7 +98,7 @@ void micro_tk(const micro_globals g) {
         #pragma unroll
         for (int n=0; n<N_BLOCK; ++n) 
             G::load<2,false>(Bs[tic][n], g.b, {0, 0, col+n, 0}, swizzled_offsets_B);
-        asm volatile("s_waitcnt vmcnt(4)");
+        asm volatile("s_waitcnt vmcnt(1)");
         if (warp_leader) atomicAdd((int*)&prod_cnt[0], 1);  
     }
     if (is_consumer) {  zero(C_accum);  }
@@ -135,7 +137,7 @@ void micro_tk(const micro_globals g) {
                 G::load<2,false>(As[toc][m], g.a, {0,0, row+m, tile+1}, swizzled_offsets_A);
             
             if (warp_leader) atomicAdd((int*)&prod_cnt[toc], 1);
-            asm volatile("s_waitcnt vmcnt(4)");
+            asm volatile("s_waitcnt vmcnt(1)");
 
             const int target_2 = NUM_PRODUCER_WORKERS*(tile/2 + 1);
             while (prod_cnt[toc] < target_2) { 
