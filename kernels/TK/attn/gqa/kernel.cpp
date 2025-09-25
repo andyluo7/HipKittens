@@ -80,13 +80,13 @@ __global__ void attend_ker(const attn_globals<D> g) {
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
 
-    // qo_tile<D, float> q_reg_fl;
-    // load<1, qo_tile<D, float>, _gl_QKVO>(q_reg_fl, g.Qg, {batch_idx, tile_idx, head_idx, 0});
-    // mul(q_reg_fl, q_reg_fl, TEMPERATURE_SCALE);  // Use sqrtf for clarity
-    // copy(q_reg, q_reg_fl);
-    // swap_layout_and_transpose(q_reg_transposed, q_reg);
-    load<1>(q_reg, g.Qg, {batch_idx, tile_idx, head_idx, 0});
+    qo_tile<D, float> q_reg_fl;
+    load<1, qo_tile<D, float>, _gl_QKVO>(q_reg_fl, g.Qg, {batch_idx, tile_idx, head_idx, 0});
+    mul(q_reg_fl, q_reg_fl, TEMPERATURE_SCALE);  // Use sqrtf for clarity
+    copy(q_reg, q_reg_fl);
     swap_layout_and_transpose(q_reg_transposed, q_reg);
+    // load<1>(q_reg, g.Qg, {batch_idx, tile_idx, head_idx, 0});
+    // swap_layout_and_transpose(q_reg_transposed, q_reg);
 
     zero(o_reg);
     zero(norm_vec);
@@ -106,7 +106,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     zero(att_block[0]);
     swap_layout_and_transpose(k_reg_transposed, k_reg);
     mma_AtB(att_block[0], k_reg_transposed, q_reg_transposed, att_block[0]);
-    mul(att_block[0], att_block[0], TEMPERATURE_SCALE);
+    // mul(att_block[0], att_block[0], TEMPERATURE_SCALE);
 
     // Each warp performs a partial softmax of QK0 (i.e. some of the online softmax up until but not including the second exponential scaling of the attention block likely)
     // col_max(max_vec, att_block[0], max_vec);
@@ -165,7 +165,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
         mul_col(o_reg, o_reg, max_vec_prev);
         mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
         //      Partial softmax for QK1
-        mul(att_block[1], att_block[1], TEMPERATURE_SCALE);
+        // mul(att_block[1], att_block[1], TEMPERATURE_SCALE);
         copy(max_vec_prev, max_vec);
         col_max(max_vec, att_block[1], max_vec);
         sub_col(att_block[1], att_block[1], max_vec);
@@ -219,7 +219,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
         mul_col(o_reg, o_reg, max_vec_prev);
         mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
         //      Partial softmax for QK2
-        mul(att_block[0], att_block[0], TEMPERATURE_SCALE);
+        // mul(att_block[0], att_block[0], TEMPERATURE_SCALE);
         copy(max_vec_prev, max_vec);
         col_max(max_vec, att_block[0], max_vec);
         sub_col(att_block[0], att_block[0], max_vec);
@@ -275,7 +275,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
     //      Partial softmax for QK3
-    mul(att_block[1], att_block[1], TEMPERATURE_SCALE);
+    // mul(att_block[1], att_block[1], TEMPERATURE_SCALE);
     copy(max_vec_prev, max_vec);
     col_max(max_vec, att_block[1], max_vec);
     sub_col(att_block[1], att_block[1], max_vec);
@@ -326,7 +326,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
     //      Partial softmax for QK4
-    mul(att_block[0], att_block[0], TEMPERATURE_SCALE);
+    // mul(att_block[0], att_block[0], TEMPERATURE_SCALE);
     copy(max_vec_prev, max_vec);
     col_max(max_vec, att_block[0], max_vec);
     sub_col(att_block[0], att_block[0], max_vec);
@@ -375,7 +375,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
     //      Full softmax for QK5
-    mul(att_block[1], att_block[1], TEMPERATURE_SCALE);
+    // mul(att_block[1], att_block[1], TEMPERATURE_SCALE);
     copy(max_vec_prev, max_vec);
     col_max(max_vec, att_block[1], max_vec);
     sub_col(att_block[1], att_block[1], max_vec);
