@@ -9,7 +9,7 @@ import tk_kernel
 
 B = 16
 H = 16
-N = 1024
+N = 2048
 D = 128
 
 D_2 = D // 2
@@ -105,10 +105,6 @@ print(f"Speedup from torch.compile: {speedup:.2f}x")
 
 # AITER
 print("\nAITer (RoPE cached):")
-
-# Try a couple of common import paths; if not found, fall back to autograd class
-_aiter_cached_fwd = None
-_RoPECached = None
 from aiter.ops.rope import rope_cached_fwd as _aiter_cached_fwd
 
 # Prepare inputs in AITer layout (SBHD) and cached cos/sin as [S,1,1,D//2]
@@ -149,8 +145,8 @@ print("AITer max_diff:", o_diff_aiter.max().item())
 
 
 # TK
-print("\nTK:")
-o_tk = torch.zeros_like(o).bfloat16()
+# print("\nTK:")
+o_tk = torch.zeros_like(x).bfloat16()
 sin_tk = sin_in.to(torch.bfloat16).cuda()
 cos_tk = cos_in.to(torch.bfloat16).cuda()
 timings = []
@@ -176,9 +172,11 @@ print(f"Speedup from TK: {speedup:.2f}x")
 o_diff = o- o_tk
 print("o: ", o[0, 0, 0, :8])
 print("o_tk: ", o_tk[0, 0, 0, :8])
-print("o_diff: ", o_diff[0, 0, 0, :8])
+print("o_diff: ", o_diff[0, 0, :2, :8])
+# print("o_diff: ", o_diff[:, :-1, :, :].max())
 
 max_diff = o_diff.abs().max().item()
 print("max_diff: ", max_diff)
+
 
 # breakpoint()
