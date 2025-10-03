@@ -15,7 +15,7 @@ torch.set_printoptions(
 B = 16
 H = 64
 H_KV = 8
-N = 512
+N = 1024
 D = 128
 causal = True
 dtype = torch.bfloat16
@@ -132,56 +132,56 @@ print(f"LSE: max_abs={l_diff.max().item():.6f}, max_rel={l_rel_error:.4f}, "
 
 # O-DIFFs
 
-warp_0_diff = o_diff[:, :32, :, 0:]
-print(f"Warp 0 diff: {warp_0_diff.max().item():.6f}")
+# warp_0_diff = o_diff[:, :32, :, 0:]
+# print(f"Warp 0 diff: {warp_0_diff.max().item():.6f}")
 
-warp_1_diff = o_diff[:, 32:64, :, 0:]
-print(f"Warp 1 diff: {warp_1_diff.max().item():.6f}")
+# warp_1_diff = o_diff[:, 32:64, :, 0:]
+# print(f"Warp 1 diff: {warp_1_diff.max().item():.6f}")
 
-warp_2_diff = o_diff[:, 64:96, :, 0:]
-print(f"Warp 2 diff: {warp_2_diff.max().item():.6f}")
+# warp_2_diff = o_diff[:, 64:96, :, 0:]
+# print(f"Warp 2 diff: {warp_2_diff.max().item():.6f}")
 
-warp_3_diff = o_diff[:, 96:128, :, 0:]
-print(f"Warp 3 diff: {warp_3_diff.max().item():.6f}")
+# warp_3_diff = o_diff[:, 96:128, :, 0:]
+# print(f"Warp 3 diff: {warp_3_diff.max().item():.6f}")
 
-warp_4_diff = o_diff[:, 128:160, :, 0:]
-print(f"Warp 4 diff: {warp_4_diff.max().item():.6f}")
+# warp_4_diff = o_diff[:, 128:160, :, 0:]
+# print(f"Warp 4 diff: {warp_4_diff.max().item():.6f}")
 
-warp_5_diff = o_diff[:, 160:192, :, 0:]
-print(f"Warp 5 diff: {warp_5_diff.max().item():.6f}")
+# warp_5_diff = o_diff[:, 160:192, :, 0:]
+# print(f"Warp 5 diff: {warp_5_diff.max().item():.6f}")
 
-warp_6_diff = o_diff[:, 192:224, :, 0:]
-print(f"Warp 6 diff: {warp_6_diff.max().item():.6f}")
+# warp_6_diff = o_diff[:, 192:224, :, 0:]
+# print(f"Warp 6 diff: {warp_6_diff.max().item():.6f}")
 
-warp_7_diff = o_diff[:, 224:256, :, 0:]
-print(f"Warp 7 diff: {warp_7_diff.max().item():.6f}")
+# warp_7_diff = o_diff[:, 224:256, :, 0:]
+# print(f"Warp 7 diff: {warp_7_diff.max().item():.6f}")
 
 
-start = 0
+# start = 0
 
-warp_8_diff = o_diff[:, 256:288, :, start:]
-print(f"Warp 0 diff: {warp_8_diff.max().item():.6f}")
+# warp_8_diff = o_diff[:, 256:288, :, start:]
+# print(f"Warp 0 diff: {warp_8_diff.max().item():.6f}")
 
-warp_9_diff = o_diff[:, 288:320, :, start:]
-print(f"Warp 1 diff: {warp_9_diff.max().item():.6f}")
+# warp_9_diff = o_diff[:, 288:320, :, start:]
+# print(f"Warp 1 diff: {warp_9_diff.max().item():.6f}")
 
-warp_10_diff = o_diff[:, 320:352, :, start:]
-print(f"Warp 2 diff: {warp_10_diff.max().item():.6f}")
+# warp_10_diff = o_diff[:, 320:352, :, start:]
+# print(f"Warp 2 diff: {warp_10_diff.max().item():.6f}")
 
-warp_11_diff = o_diff[:, 352:384, :, start:]
-print(f"Warp 3 diff: {warp_11_diff.max().item():.6f}")
+# warp_11_diff = o_diff[:, 352:384, :, start:]
+# print(f"Warp 3 diff: {warp_11_diff.max().item():.6f}")
 
-warp_12_diff = o_diff[:, 384:416, :, start:]
-print(f"Warp 4 diff: {warp_12_diff.max().item():.6f}")
+# warp_12_diff = o_diff[:, 384:416, :, start:]
+# print(f"Warp 4 diff: {warp_12_diff.max().item():.6f}")
 
-warp_13_diff = o_diff[:, 416:448, :, start:]
-print(f"Warp 5 diff: {warp_13_diff.max().item():.6f}")
+# warp_13_diff = o_diff[:, 416:448, :, start:]
+# print(f"Warp 5 diff: {warp_13_diff.max().item():.6f}")
 
-warp_14_diff = o_diff[:, 448:480, :, start:]
-print(f"Warp 6 diff: {warp_14_diff.max().item():.6f}")
+# warp_14_diff = o_diff[:, 448:480, :, start:]
+# print(f"Warp 6 diff: {warp_14_diff.max().item():.6f}")
 
-warp_15_diff = o_diff[:, 480:512, :, start:]
-print(f"Warp 7 diff: {warp_15_diff.max().item():.6f}")
+# warp_15_diff = o_diff[:, 480:512, :, start:]
+# print(f"Warp 7 diff: {warp_15_diff.max().item():.6f}")
 
 # breakpoint()
 
