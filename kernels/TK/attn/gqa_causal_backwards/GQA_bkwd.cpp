@@ -419,9 +419,20 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
     const int warpid = kittens::warpid();
     const int j = seq_idx * NUM_WARPS + warpid;
     const int stagger = warpid / 4;
+
+    // optimization on loop bounds 
+    const int j_max = seq_idx * NUM_WARPS + NUM_WARPS - 1; 
+    const int steps_per_head = ATTN_N / STEP_QO;   // 16
+    const int j_min = seq_idx * NUM_WARPS;
+    const int k_start_min = j_min * WARP_SIZE_KV;
+    // first Q step that can overlap this K-span:
+    auto ceil_div = [](int a, int b){ return (a + b - 1) / b; };
+    int s_first = max(0, ceil_div(k_start_min - (STEP_QO - 1), STEP_QO));
+    // Once overlap starts, it persists to the end.
+    int s_last  = steps_per_head - 1;  
+    int i_begin = s_first;
+    int i_end   = (GROUP_SIZE - 1) * steps_per_head + s_last;
     
-    const int num_steps_per_head = ATTN_N / STEP_QO; // 4
-    const int num_steps = num_steps_per_head * GROUP_SIZE; // 4
     const float scale_factor = 1.0f / sqrt(D);
 
     // Shared tiles
@@ -465,13 +476,15 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
     zero(dK_j_T);
     zero(dV_j_T);
 
-    // Load Q, dO, L, delta for this specific query head
-    load(L_smem[tic], g.L_vec, {batch_idx, first_q_head, 0, 0});
-    load(delta_smem[tic], g.delta_vec, {batch_idx, first_q_head, 0, 0});
-    G::load<1, false>(Q_i_smem[tic][0], g.Q, {batch_idx, 0, first_q_head, 0});
-    G::load<1, false>(dO_i_smem[tic][0], g.dOg, {batch_idx, 0, first_q_head, 0});
-    G::load<1, false>(Q_i_smem[tic][1], g.Q, {batch_idx, 1, first_q_head, 0});
-    G::load<1, false>(dO_i_smem[tic][1], g.dOg, {batch_idx, 1, first_q_head, 0});
+    int curr_head = i_begin / steps_per_head + first_q_head;
+    int curr_seq  = i_begin % steps_per_head;   
+    // seed tic with the tiles we actually compute first
+    load(L_smem[tic],       g.L_vec,     {batch_idx, curr_head, 0, curr_seq});
+    load(delta_smem[tic],   g.delta_vec, {batch_idx, curr_head, 0, curr_seq});
+    G::load<1,false>(Q_i_smem[tic][0],  g.Q,   {batch_idx, curr_seq * 2 + 0, curr_head, 0});
+    G::load<1,false>(Q_i_smem[tic][1],  g.Q,   {batch_idx, curr_seq * 2 + 1, curr_head, 0});
+    G::load<1,false>(dO_i_smem[tic][0], g.dOg, {batch_idx, curr_seq * 2 + 0, curr_head, 0});
+    G::load<1,false>(dO_i_smem[tic][1], g.dOg, {batch_idx, curr_seq * 2 + 1, curr_head, 0});
     __builtin_amdgcn_s_waitcnt(0);
     __builtin_amdgcn_s_barrier();
     __builtin_amdgcn_sched_barrier(0);
@@ -481,12 +494,12 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
     }
 
     // 8. Process all query heads in this KV group
-    // 9. for 1 <= i <= T_r (1024 / 32 = 32)  
-    for (int i = 0; i < num_steps; ++i, tic ^= 1, toc ^= 1) {
-        const int q_head_idx = i / num_steps_per_head + first_q_head;
-        const int q_seq_idx = i % num_steps_per_head;
-        const int next_q_head_idx = (i + 1) / num_steps_per_head + first_q_head;
-        const int next_q_seq_idx = (i + 1) % num_steps_per_head;
+    // 9. for 1 <= i <= T_r (1024 / 32 = 32)
+    for (int i = i_begin; i <= i_end; ++i, tic ^= 1, toc ^= 1) {
+        const int q_head_idx    = i / steps_per_head + first_q_head;
+        const int q_seq_idx     = i % steps_per_head;
+        const int next_q_head_idx = (i + 1) / steps_per_head + first_q_head;
+        const int next_q_seq_idx  = (i + 1) % steps_per_head;
 
         // dot slice 0
         {
@@ -543,7 +556,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
             __builtin_amdgcn_s_barrier();
             __builtin_amdgcn_sched_barrier(0);
 
-            if (i < num_steps - 1) {
+            if (i < i_end) {
                 load(L_smem[toc], g.L_vec, {batch_idx, next_q_head_idx, 0, next_q_seq_idx});
                 G::load<1, false>(Q_i_smem[toc][0], g.Q, {batch_idx, next_q_seq_idx * 2, next_q_head_idx, 0});
             }
@@ -638,7 +651,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
             __builtin_amdgcn_s_barrier();
             __builtin_amdgcn_sched_barrier(0);
 
-            if (i < num_steps - 1) {
+            if (i < i_end) {
                 load(delta_smem[toc], g.delta_vec, {batch_idx, next_q_head_idx, 0, next_q_seq_idx});
                 G::load<1, false>(dO_i_smem[toc][0], g.dOg, {batch_idx, next_q_seq_idx * 2, next_q_head_idx, 0});
             }
@@ -733,7 +746,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
             __builtin_amdgcn_s_barrier();
             __builtin_amdgcn_sched_barrier(0);
 
-            if (i < num_steps - 1) {
+            if (i < i_end) {
                 G::load<1, false>(Q_i_smem[toc][1], g.Q, {batch_idx, next_q_seq_idx * 2 + 1, next_q_head_idx, 0});
             }
             auto attn_i_smem_subtile = subtile_inplace<WARP_SIZE_KV, DOT_SLICE_QO>(attn_i_smem, {warpid, 0});
@@ -827,7 +840,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
             __builtin_amdgcn_s_barrier();
             __builtin_amdgcn_sched_barrier(0);
 
-            if (i < num_steps - 1) {
+            if (i < i_end) {
                 G::load<1, false>(dO_i_smem[toc][1], g.dOg, {batch_idx, next_q_seq_idx * 2 + 1, next_q_head_idx, 0});
             }
             auto attn_i_smem_subtile = subtile_inplace<WARP_SIZE_KV, DOT_SLICE_QO>(attn_i_smem, {warpid, 0});

@@ -25,12 +25,28 @@ n = 1024
 d = 128
 dtype = torch.bfloat16
 mean = 10
-std = 0.1  
+std = 0.1 
 
+num_warmup = 50
+num_iters = 100
+
+start_event = torch.cuda.Event(enable_timing=True) # in milliseconds
+end_event = torch.cuda.Event(enable_timing=True)
 
 # **************************************************
 # Benchmarking
 # **************************************************
+
+def flops(batch, seqlen, nheads, headdim, causal, mode="bwd"):
+    assert mode in ["fwd", "bwd", "fwd_bwd"]
+    f = 4 * batch * seqlen**2 * nheads * headdim // (2 if causal else 1)
+    return f if mode == "fwd" else (2.5 * f if mode == "bwd" else 3.5 * f)
+
+def efficiency(flop, time):
+    """Calculate efficiency in TFLOPS."""
+    flop = flop / 1e12  # convert to TFLOPS
+    time = time / 1e3   # convert to seconds
+    return flop / time
 
 def robustness_check(ref, pred):
     ref = ref.float()
@@ -141,17 +157,40 @@ def generate_inputs():
 
 # Generate base inputs in BHND format
 Q_bhnd, K_bhnd, V_bhnd, dO_bhnd = generate_inputs()
+flops_ref = flops(b, n, h_q, d, causal)
 
 # **************************************************
 # AITER forward and backward
 # **************************************************
 
-Q_aiter = Q_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
-K_aiter = K_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
-V_aiter = V_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
-dO_aiter = dO_bhnd.transpose(1, 2).contiguous()
-out_aiter, softmax_lse = aiter.flash_attn_func(Q_aiter, K_aiter, V_aiter, causal=causal, return_lse=True, deterministic=False)
-out_aiter.backward(dO_aiter)
+for _ in range(num_warmup):
+    Q_aiter = Q_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
+    K_aiter = K_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
+    V_aiter = V_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
+    dO_aiter = dO_bhnd.transpose(1, 2).contiguous()
+    out_aiter, softmax_lse = aiter.flash_attn_func(Q_aiter, K_aiter, V_aiter, causal=causal, return_lse=True, deterministic=False)
+    out_aiter.backward(dO_aiter)
+timings_ref = []
+for _ in range(num_iters):
+    Q_aiter = Q_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
+    K_aiter = K_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
+    V_aiter = V_bhnd.transpose(1, 2).contiguous().detach().requires_grad_(True)  
+    dO_aiter = dO_bhnd.transpose(1, 2).contiguous()
+    out_aiter, softmax_lse = aiter.flash_attn_func(Q_aiter, K_aiter, V_aiter, causal=causal, return_lse=True, deterministic=False)
+    torch.cuda.synchronize()
+    start_event.record()
+    out_aiter.backward(dO_aiter)
+    end_event.record()
+    torch.cuda.synchronize()
+    elapsed_time = start_event.elapsed_time(end_event)
+    timings_ref.append(elapsed_time)
+
+print(f"{out_aiter.dtype=}")
+avg_time_ref = sum(timings_ref) / len(timings_ref)
+eff_ref = efficiency(flops_ref, avg_time_ref)
+print(f"AITER (AMD) reference average execution time: {avg_time_ref:.4f} ms")
+print(f"AITER (AMD) reference performance: {eff_ref:.2f} TFLOPS for {b=} {h_q=} {h_kv=} {n=} {d=} {causal=}.\n")
+
 q_grad_aiter_bnhd = Q_aiter.grad
 k_grad_aiter_bnhd = K_aiter.grad  
 v_grad_aiter_bnhd = V_aiter.grad
@@ -221,35 +260,78 @@ dK_tk = torch.zeros_like(k_grad_aiter_bnhd).bfloat16().contiguous()
 dV_tk = torch.zeros_like(v_grad_aiter_bnhd).bfloat16().contiguous()
 delta_tk = torch.zeros((b, h_q, n, 1), device='cuda').float().transpose(-1, -2).contiguous()
 
-tk_kernel_bkwd.dispatch_prep(
-    O_tk,     # Og
-    dO_tk,    # dOg
-    delta_tk, # delta
-)
-diff = (delta_tk.transpose(2, 3) - delta_tiled).abs()
-print(f"Delta kernel diff: {diff.max().item():.6f}")
+print("Running ThunderKittens ...")
+timings = []
+for _ in range(num_warmup):
+    tk_kernel_bkwd.dispatch_prep(
+        O_tk,     # Og
+        dO_tk,    # dOg
+        delta_tk, # delta
+    )
 
-tk_kernel_bkwd.dispatch_bwd_combined(
-    Q_tk,     
-    K_tk,     
-    V_tk,     
-    O_tk,     
-    dO_tk,    
-    dQ_tk_in,   
-    dK_tk,    
-    dV_tk,    
-    L_tk,
-    delta_tk
-)
+    tk_kernel_bkwd.dispatch_bwd_combined(
+        Q_tk,     
+        K_tk,     
+        V_tk,     
+        O_tk,     
+        dO_tk,    
+        dQ_tk_in,   
+        dK_tk,    
+        dV_tk,    
+        L_tk,
+        delta_tk
+    )
 
-tk_kernel_bkwd.dispatch_dq_shuffle(
-    dQ_tk_in,
-    dQ_tk
-)
+    tk_kernel_bkwd.dispatch_dq_shuffle(
+        dQ_tk_in,
+        dQ_tk
+    )
 
-# breakpoint()
+for _ in range(num_iters):
+    dQ_tk_in = torch.zeros_like(q_grad_aiter_bnhd).bfloat16().transpose(1, 2).contiguous()
+    dQ_tk = torch.zeros_like(q_grad_aiter_bnhd).bfloat16().contiguous()
+    dK_tk = torch.zeros_like(k_grad_aiter_bnhd).bfloat16().contiguous()
+    dV_tk = torch.zeros_like(v_grad_aiter_bnhd).bfloat16().contiguous()
+    delta_tk = torch.zeros((b, h_q, n, 1), device='cuda').float().transpose(-1, -2).contiguous()
+    torch.cuda.synchronize()
+    start_event.record()
+
+    tk_kernel_bkwd.dispatch_prep(
+        O_tk,     # Og
+        dO_tk,    # dOg
+        delta_tk, # delta
+    )
+
+    tk_kernel_bkwd.dispatch_bwd_combined(
+        Q_tk,     
+        K_tk,     
+        V_tk,     
+        O_tk,     
+        dO_tk,    
+        dQ_tk_in,   
+        dK_tk,    
+        dV_tk,    
+        L_tk,
+        delta_tk
+    )
+
+    tk_kernel_bkwd.dispatch_dq_shuffle(
+        dQ_tk_in,
+        dQ_tk
+    )
+
+    end_event.record()
+    torch.cuda.synchronize()
+    elapsed_time = start_event.elapsed_time(end_event)
+    timings.append(elapsed_time)
+    delta_tk = delta_tk.transpose(-1, -2).contiguous()
 
 L_tk = L_tk.transpose(-1, -2).contiguous()
+
+avg_time_tk = sum(timings) / len(timings)
+eff_tk = efficiency(flops_ref, avg_time_tk)
+print(f"ThunderKittens average execution time: {avg_time_tk:.4f} ms")
+print(f"ThunderKittens performance: {eff_tk:.2f} TFLOPS for {b=} h_q={h_q} h_kv={h_kv} {n=} {d=} {causal=}.\n")
 
 # **************************************************
 # Comparisons
@@ -343,14 +425,15 @@ print(f"V grad: max_abs={v_diff.max().item():.6f}, max_rel={v_rel_error:.4f}, "
       f"rel_l2={v_l2_error:.4f}, cos={v_cos:.6f}, "
       f"errors={v_err_cnt}/{v_total} ({100*v_err_cnt/v_total:.4f}%)")
 
+batch = 1
+# print(f"{q_diff[batch,:4].max().item()=}") 
+# print(f"{q_diff[batch,:256].max().item()=}") 
+# print(f"{q_diff[batch,256:512].max().item()=}") 
+# print(f"{q_diff[batch,512:768].max().item()=}") 
+# print(f"{q_diff[batch,768:1024].max().item()=}") 
 
-# print(f"{q_diff[0,:4].max().item()=}") 
-# print(f"{q_diff[0,4:8].max().item()=}") 
-# print(f"{q_diff[0,8:12].max().item()=}") 
-# print(f"{q_diff[0,12:16].max().item()=}") 
-# print(f"{q_diff[0,16:20].max().item()=}") 
-# print(f"{q_diff[0,20:24].max().item()=}") 
-# print(f"{q_diff[0,24:28].max().item()=}") 
-# print(f"{q_diff[0,28:32].max().item()=}") 
-# print(f"{q_diff[0,32:36].max().item()=}") 
+# # print location of max error for q_diff
+# max_error_idx = q_diff.max(dim=1)[1]
+# print(f"{q_diff[batch,max_error_idx[batch]].max().item()=}") 
+
 

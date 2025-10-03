@@ -2,7 +2,7 @@
 GPU_TARGET=CDNA4
 
 TARGET=tk_kernel
-SRC=kernel.cpp
+SRC=kernel_01.cpp
 
 # HIP variables
 ROCM_INSTALL_DIR := $(ROCM_PATH)
