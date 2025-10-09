@@ -230,7 +230,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
         }
     }
     __builtin_amdgcn_s_setprio(0);
-
     // Each warp performs a partial softmax of QK0 (i.e. some of the online softmax up until but not including the second exponentialscaling of the attention block likely)
     col_max(max_vec, att_block[0]);
     sub_col(att_block[0], att_block[0], max_vec);
@@ -265,8 +264,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
         sub(max_vec_prev, max_vec_prev, max_vec); 
         exp2(max_vec_prev, max_vec_prev);  
         mul(norm_vec, norm_vec, max_vec_prev);
-        col_sum(norm_vec, att_block[0], norm_vec);
-        copy(att_block_bf16, att_block[0]);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
     
@@ -281,9 +278,12 @@ __global__ void attend_ker(const attn_globals<D> g) {
         __builtin_amdgcn_s_barrier();
     
         // Cluster 2: A0V0
+        col_sum(norm_vec, att_block[0], norm_vec);
+        copy(att_block_bf16, att_block[0]);
         mul_col(o_reg, o_reg, max_vec_prev);
         mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
         //      Partial softmax for QK1
+        copy(max_vec_prev, max_vec);
         if constexpr (causal) {
             const int kv_end_pos = (k_curr_idx + 1) * KV_BLOCK_SIZE;
             const int kv_end_pos_s = __builtin_amdgcn_readfirstlane(kv_end_pos);
@@ -291,10 +291,8 @@ __global__ void attend_ker(const attn_globals<D> g) {
                 mask_kv_tile(att_block[1], tile_idx, k_curr_idx);
             }
         }
-        copy(max_vec_prev, max_vec);
         col_max(max_vec, att_block[1], max_vec);
         sub_col(att_block[1], att_block[1], max_vec);
-        exp2(att_block[1], att_block[1]);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
     
@@ -312,6 +310,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
         // Cluster 4: QK2
         __builtin_amdgcn_s_setprio(1);
         zero(att_block[0]);
+        exp2(att_block[1], att_block[1]);
         swap_layout_and_transpose(k_reg_transposed, k_reg);
         mma_AtB(att_block[0], k_reg_transposed, q_reg_transposed, att_block[0]);
         //      Finish softmax for QK1
@@ -319,8 +318,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
         exp2(max_vec_prev, max_vec_prev);  
         mul(norm_vec, norm_vec, max_vec_prev);
         col_sum(norm_vec, att_block[1], norm_vec);
-        mul_col(o_reg, o_reg, max_vec_prev);
-        copy(att_block_bf16, att_block[1]);
         __builtin_amdgcn_s_setprio(0);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
@@ -337,8 +334,11 @@ __global__ void attend_ker(const attn_globals<D> g) {
         __builtin_amdgcn_s_barrier();
     
         // Cluster 6: A1V1
+        mul_col(o_reg, o_reg, max_vec_prev);
+        copy(att_block_bf16, att_block[1]);
         mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
         //      Partial softmax for QK2
+        copy(max_vec_prev, max_vec);
         if constexpr (causal) {
             const int kv_end_pos = (k_curr_idx + 1) * KV_BLOCK_SIZE;
             const int kv_end_pos_s = __builtin_amdgcn_readfirstlane(kv_end_pos);
@@ -346,11 +346,9 @@ __global__ void attend_ker(const attn_globals<D> g) {
                 mask_kv_tile(att_block[0], tile_idx, k_curr_idx);
             }
         }
-        copy(max_vec_prev, max_vec);
         col_max(max_vec, att_block[0], max_vec);
         sub_col(att_block[0], att_block[0], max_vec);
-        exp_first_half_k(att_block[0], att_block[0]);
-        exp_second_half_k(att_block[0], att_block[0]);
+        exp2(att_block[0], att_block[0]);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
     
@@ -396,8 +394,8 @@ __global__ void attend_ker(const attn_globals<D> g) {
 
     // Cluster 2:
     //      A2V2
-    __builtin_amdgcn_s_setprio(1);
     mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
+    copy(max_vec_prev, max_vec);
     if constexpr (causal) {
         const int kv_end_pos = (k_curr_idx + 1) * KV_BLOCK_SIZE;
         const int kv_end_pos_s = __builtin_amdgcn_readfirstlane(kv_end_pos);
@@ -405,12 +403,10 @@ __global__ void attend_ker(const attn_globals<D> g) {
             mask_kv_tile(att_block[1], tile_idx, k_curr_idx);
         }
     }
-    //      Partial softmax for QK3
-    copy(max_vec_prev, max_vec);
     col_max(max_vec, att_block[1], max_vec);
+    //      Partial softmax for QK3
     sub_col(att_block[1], att_block[1], max_vec);
     exp2(att_block[1], att_block[1]);
-    __builtin_amdgcn_s_setprio(0);
     __builtin_amdgcn_sched_barrier(0);
     __builtin_amdgcn_s_barrier();
 
@@ -451,6 +447,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     //      A3V3
     mul_col(o_reg, o_reg, max_vec_prev);
     mma_AtB(o_reg, v_reg, att_block_bf16, o_reg);
+    copy(max_vec_prev, max_vec);
     if constexpr (causal) {
         const int kv_end_pos = (k_curr_idx + 1) * KV_BLOCK_SIZE;
         const int kv_end_pos_s = __builtin_amdgcn_readfirstlane(kv_end_pos);
@@ -459,7 +456,6 @@ __global__ void attend_ker(const attn_globals<D> g) {
         }
     }
     //      Partial softmax for QK4
-    copy(max_vec_prev, max_vec);
     col_max(max_vec, att_block[0], max_vec);
     sub_col(att_block[0], att_block[0], max_vec);
     exp2(att_block[0], att_block[0]);
