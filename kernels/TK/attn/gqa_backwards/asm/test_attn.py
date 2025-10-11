@@ -228,7 +228,7 @@ tk_kernel_fwd.dispatch_fwd(Q_tk, K_tk, V_tk, O_tk, L_tk)
 # L_tk = L_tiled.float().contiguous()
 
 # TK
-print("Running ThunderKittens ...")
+print("Running ThunderKittens...")
 timings = []
 for _ in range(num_warmup):
     dQ_tk_in = torch.zeros_like(q_grad_aiter_bnhd).bfloat16().transpose(1, 2).contiguous()
@@ -259,7 +259,6 @@ for _ in range(num_warmup):
         dQ_tk_in,
         dQ_tk
     )
-
 
 for _ in range(num_iters):
     dQ_tk_in = torch.zeros_like(q_grad_aiter_bnhd).bfloat16().transpose(1, 2).contiguous()
@@ -298,8 +297,8 @@ for _ in range(num_iters):
     torch.cuda.synchronize()
     elapsed_time = start_event.elapsed_time(end_event)
     timings.append(elapsed_time)
-    delta_tk = delta_tk.transpose(-1, -2).contiguous()
 
+delta_tk = delta_tk.transpose(-1, -2).contiguous()
 L_tk = L_tk.transpose(-1, -2).contiguous()
 
 avg_time_tk = sum(timings) / len(timings)

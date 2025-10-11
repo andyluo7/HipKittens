@@ -63,7 +63,7 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
   using dO_col_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<88, 103>>, 4>; // 16 registers - v[88:103]
   using K_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<56, 71>, ducks::rt::range<256, 303>>, 4>; // 64 registers - a[0:47] & v[56:71]
   using V_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<304, 367>>, 4>; // 64 registers - a[48:111]
-  using P_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<24, 39>>, 4>; // 16 registers - v[24:39]
+  using P_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<40, 55>>, 4>; // 16 registers - v[40:55]
   using dP_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<56, 71>>, 4>; // 16 registers - v[56:71]
   using P_bf16_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<116, 123>>, 2>; // 8 registers - v[116:123]
   using dP_bf16_ranges = ducks::rt::split_many_t<ducks::rt::type_list<ducks::rt::range<56, 63>>, 2>; // 8 registers - v[56:63]
@@ -170,6 +170,14 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
       load<1, 1>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
       load<1, 2>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
       load<1, 3>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<2, 0>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<2, 1>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<2, 2>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<2, 3>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<3, 0>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<3, 1>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<3, 2>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
+      load<3, 3>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
       asm volatile("s_waitcnt vmcnt(0) lgkmcnt(0)");
       __builtin_amdgcn_s_barrier();
 
@@ -178,39 +186,26 @@ __global__ void attend_bwd_combined_ker(const attn_bwd_combined_globals<D> g) {
       // 13. dP_ij = dO_i @ V_j^T
       // 14. dS_ij = P_ij o (dP_ij - delta_i)
       // mma_ABt(P_ij, Q_i, K_j);
-      mma_ABt<0, 0, 0>(P_ij, Q_i, K_j);
-      load<2, 0>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      load<2, 1>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      mma_ABt<0, 0, 1>(P_ij, Q_i, K_j, P_ij);
-      mma_ABt<0, 0, 2>(P_ij, Q_i, K_j, P_ij);
-      load<2, 2>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      load<2, 3>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      mma_ABt<0, 0, 3>(P_ij, Q_i, K_j, P_ij);
-      mma_ABt<0, 1, 0>(P_ij, Q_i, K_j);
-      load<3, 0>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      load<3, 1>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      mma_ABt<0, 1, 1>(P_ij, Q_i, K_j, P_ij);
-      mma_ABt<0, 1, 2>(P_ij, Q_i, K_j, P_ij);
-      load<3, 2>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      load<3, 3>(K_j, subtile_inplace<WARP_SIZE_KV, D>(K_j_smem, {warpid, 0}), K_j_addr);
-      mma_ABt<0, 1, 3>(P_ij, Q_i, K_j, P_ij);
-      asm volatile("s_waitcnt lgkmcnt(6)");
-      mma_ABt<0, 2, 0>(P_ij, Q_i, K_j);
+      // Load dO_i from shared memory to registers
+      // load(dO_i, subtile_inplace<DOT_SLICE_QO, D>(dO_i_smem[tic][0], {0, 0}));
       uint32_t dO_i_addr = get_address(dO_i, subtile_inplace<DOT_SLICE_QO, D>(dO_i_smem[tic][0], {0, 0}));
       load<0, 0>(dO_i, subtile_inplace<DOT_SLICE_QO, D>(dO_i_smem[tic][0], {0, 0}), dO_i_addr);
       load<0, 1>(dO_i, subtile_inplace<DOT_SLICE_QO, D>(dO_i_smem[tic][0], {0, 0}), dO_i_addr);
-      mma_ABt<0, 2, 1>(P_ij, Q_i, K_j, P_ij);
-      asm volatile("s_waitcnt lgkmcnt(6)");
-      mma_ABt<0, 2, 2>(P_ij, Q_i, K_j, P_ij);
-      // Load dO_i from shared memory to registers
-      // load(dO_i, subtile_inplace<DOT_SLICE_QO, D>(dO_i_smem[tic][0], {0, 0}));
       load<0, 2>(dO_i, subtile_inplace<DOT_SLICE_QO, D>(dO_i_smem[tic][0], {0, 0}), dO_i_addr);
       load<0, 3>(dO_i, subtile_inplace<DOT_SLICE_QO, D>(dO_i_smem[tic][0], {0, 0}), dO_i_addr);
+      mma_ABt<0, 0, 0>(P_ij, Q_i, K_j);
+      mma_ABt<0, 0, 1>(P_ij, Q_i, K_j, P_ij);
+      mma_ABt<0, 0, 2>(P_ij, Q_i, K_j, P_ij);
+      mma_ABt<0, 0, 3>(P_ij, Q_i, K_j, P_ij);
+      mma_ABt<0, 1, 0>(P_ij, Q_i, K_j);
+      mma_ABt<0, 1, 1>(P_ij, Q_i, K_j, P_ij);
+      mma_ABt<0, 1, 2>(P_ij, Q_i, K_j, P_ij);
+      mma_ABt<0, 1, 3>(P_ij, Q_i, K_j, P_ij);
+      mma_ABt<0, 2, 0>(P_ij, Q_i, K_j);
+      mma_ABt<0, 2, 1>(P_ij, Q_i, K_j, P_ij);
+      mma_ABt<0, 2, 2>(P_ij, Q_i, K_j, P_ij);
       mma_ABt<0, 2, 3>(P_ij, Q_i, K_j, P_ij);
-      asm volatile("s_waitcnt lgkmcnt(6)");
-      mma_ABt<0, 3, 0>(P_ij, Q_i, K_j, P_ij);
-
-
+      mma_ABt<0, 3, 0>(P_ij, Q_i, K_j);
       mma_ABt<0, 3, 1>(P_ij, Q_i, K_j, P_ij);
       mma_ABt<0, 3, 2>(P_ij, Q_i, K_j, P_ij);
       mma_ABt<0, 3, 3>(P_ij, Q_i, K_j, P_ij);
