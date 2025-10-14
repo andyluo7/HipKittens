@@ -61,6 +61,7 @@ using naive_l = ducks::rv_layout::naive;
 // register tile shapes
 using rt_16x16_s = ducks::rt_shape::rt_16x16;
 using rt_32x32_s = ducks::rt_shape::rt_32x32;
+using rt_32x32_8_s = ducks::rt_shape::rt_32x32_8;
 using rt_16x32_s = ducks::rt_shape::rt_16x32;
 using rt_32x16_s = ducks::rt_shape::rt_32x16;
 using rt_32x16_4_s = ducks::rt_shape::rt_32x16_4;
