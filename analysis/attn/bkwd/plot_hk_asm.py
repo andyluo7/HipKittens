@@ -2,11 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-# MI350x, MHA, non-causal, N=4096
+# MI355x, MHA, non-causal, N=8192
 data = {
-    "HK 4-Warps": 668.37,
-    "HK ASM 4-Warps": 814.93,
-    "AITER (AMD)": 824.74
+    "HK 4-Warps": 893.30,
+    "HK ASM 4-Warps": 1073.31,
+    "AITER (AMD)": 1115.40
 }
 
 colors = ["#7CB9BC", "#8E69B8", "#E59952"]  # HK teal, HK ASM purple, AITER orange
@@ -33,7 +33,7 @@ for bar, value in zip(bars, values):
 # add some padding to the top of the y-axis to prevent label overlap
 ax.set_ylim(0, max_tflops * 1.15)
 ax.set_ylabel('Performance (TFLOPS)', fontsize=16)
-ax.set_title('MHA Non-Causal Backward Performance Comparison MI350X (N=4096)', fontsize=16)
+ax.set_title('MHA Non-Causal Backward Performance Comparison MI355X (N=8192)', fontsize=16)
 ax.set_xticks(x)
 ax.set_xticklabels(labels, fontsize=16)
 ax.tick_params(axis='y', labelsize=16)
@@ -41,7 +41,7 @@ ax.tick_params(axis='y', labelsize=16)
 plt.tight_layout()
 plt.show()
 
-output_file = 'mi350x_mha_non_causal_hk_asm_comparison.png'
+output_file = 'mi355x_mha_non_causal_hk_asm_comparison.png'
 plt.savefig(output_file, dpi=300, bbox_inches='tight')
 print(f"Plot saved to {output_file}")
 

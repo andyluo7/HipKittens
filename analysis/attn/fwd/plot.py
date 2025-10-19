@@ -433,11 +433,16 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
                     ax.text(bar.get_x() + bar.get_width()/2., height + max_tflops * 0.01,
                             f'{value:.0f}', ha='center', va='bottom', fontsize=14)
 
+        # Parse setting name for title
+        setting_parts = setting.split('_')
+        attn_type = setting_parts[0].upper()  # MHA or GQA
+        causal_mode = 'Causal' if 'causal' in setting and 'non_causal' not in setting else 'Non-Causal'
+
         # add some padding to the top of the y-axis to prevent label overlap
         ax.set_ylim(0, max_tflops * 1.15)
         ax.set_xlabel('Sequence Length (N)', fontsize=16)
         ax.set_ylabel('Performance (TFLOPS)', fontsize=16)
-        ax.set_title(f'Attention Performance Comparison {device.upper()}', fontsize=16)
+        ax.set_title(f'{attn_type} {causal_mode} Forward Performance Comparison {device.upper()}', fontsize=16)
         ax.set_xticks(x)
         ax.set_xticklabels(matrix_sizes, fontsize=16)
         ax.tick_params(axis='y', labelsize=16)
