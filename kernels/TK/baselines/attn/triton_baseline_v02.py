@@ -1724,8 +1724,8 @@ def run_benchmark(custom, args):
         # bias = None
 
         # Bwd pass only supports causal=True right now
-        # if mode == 'bwd':
-        #     causal = True
+        if mode == 'bwd':
+            causal = True
 
         flops_per_matmul = 0
         if 1:
