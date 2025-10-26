@@ -14,7 +14,7 @@ H = 16
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 4096
 HEAD_D = 128
 D = HEAD_D * H
-DROPOUT_P = 0.01
+DROPOUT_P = 0.00
 norm = nn.LayerNorm(D).cuda()
 torch.random.manual_seed(42)
 x = torch.randn((B, N, D), dtype=torch.bfloat16, device='cuda').requires_grad_()
@@ -22,8 +22,8 @@ residual = torch.randn((B, N, D), dtype=torch.bfloat16, device='cuda').requires_
 
 filename = sys.argv[2]
 
-num_warmup = 100
-num_iters = 500
+num_warmup = 500
+num_iters = 100
 
 start_event = torch.cuda.Event(enable_timing=True) # in milliseconds
 end_event = torch.cuda.Event(enable_timing=True)
