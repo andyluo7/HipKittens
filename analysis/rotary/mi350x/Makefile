@@ -6,9 +6,9 @@ SRC=kernel_1024.cpp
 
 # HIP variables
 ROCM_INSTALL_DIR := $(ROCM_PATH)
-HIP_INCLUDE_DIR  := $(ROCM_INSTALL_DIR)/include/hip
+HIP_INCLUDE_DIR  := /opt/rocm/include/hip
 
-HIPCXX ?= $(ROCM_INSTALL_DIR)/bin/hipcc
+HIPCXX ?= /opt/rocm/bin/hipcc
 
 # Compiler flags based on GPU target
 ifeq ($(GPU_TARGET),CDNA2)

@@ -29,7 +29,7 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
     fig, ax = plt.subplots(figsize=(10, 6))
     bars0 = ax.bar(x - width, pytorch_tflops, width, label='PyTorch', color=colors[4])
     bars1 = ax.bar(x, compiled_tflops, width, label='Compiled PyTorch', color=colors[2])
-    bars2 = ax.bar(x + width, aiter_tflops, width, label='AITER', color=colors[0])
+    bars2 = ax.bar(x + width, aiter_tflops, width, label='AITER (ASM)', color=colors[0])
     bars3 = ax.bar(x + 2*width, tk_tflops, width, label='HipKittens', color=colors[3])
 
     max_tflops = max(max(pytorch_tflops), max(compiled_tflops), max(aiter_tflops), max(tk_tflops))

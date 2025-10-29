@@ -20,8 +20,8 @@ CPPFLAGS += -DATTN_N=$(ATTN_N)
 
 # HIP variables
 ROCM_INSTALL_DIR := $(ROCM_PATH)
-HIP_INCLUDE_DIR  := $(ROCM_INSTALL_DIR)/include/hip
-HIPCXX ?= $(ROCM_INSTALL_DIR)/bin/hipcc
+HIP_INCLUDE_DIR  := /opt/rocm/include/hip
+HIPCXX ?= /opt/rocm/bin/hipcc
 
 # Check that SRC and TARGET were provided
 ifeq ($(strip $(SRC)),)

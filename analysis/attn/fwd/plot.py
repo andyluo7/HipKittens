@@ -38,11 +38,11 @@ mi350x_gqa_baselines_causal = {
         "16384": 661.953230,
     },
     "ck": {
-        "1024": 461,
-        "2048": 557,
-        "4096": 627,
-        "8192": 654,
-        "16384": 677,
+        "1024": 472.02,
+        "2048": 557.52,
+        "4096": 627.26,
+        "8192": 665.95,
+        "16384": 687.68,
     },
     "torch": {
         "1024": 229.270408,
@@ -86,11 +86,11 @@ mi350x_gqa_baselines_non_causal = {
         "16384": 796.414306,
     },
     "ck": {
-        "1024": 611,
-        "2048": 653,
-        "4096": 694,
-        "8192": 702,
-        "16384": 691,
+        "1024": 608.49,
+        "2048": 651.18,
+        "4096": 681.50,
+        "8192": 688.30,
+        "16384": 686.93,
     },
     "torch": {
         "1024": 389.920113,
@@ -142,11 +142,11 @@ mi350x_mha_baselines_causal = {
         "16384": 636.744268,
     },
     "ck": {
-        "1024": 412,
-        "2048": 504,
-        "4096": 600,
-        "8192": 663,
-        "16384": 700,
+        "1024": 410.79,
+        "2048": 506.30,
+        "4096": 604.96,
+        "8192": 664.03,
+        "16384": 720.79,
     },
     "torch": {
         "1024": 206.342435,
@@ -191,11 +191,11 @@ mi350x_mha_baselines_non_causal = {
         "16384": 783.453667,
     },
     "ck": {
-        "1024": 412,
-        "2048": 504,
-        "4096": 600,
-        "8192": 663,
-        "16384": 700,
+        "1024": 590.46,
+        "2048": 583.07,
+        "4096": 656.71,
+        "8192": 698.08,
+        "16384": 705.39,
     },
     "torch": {
         "1024": 391.910339,
@@ -302,7 +302,7 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
         third_bar_start = x
         fourth_bar_start = x + width
         fifth_bar_start = x + 2*width
-        bars0 = ax.bar(fourth_bar_start, aiter_tflops, width, label='AITER', color=colors[0])
+        bars0 = ax.bar(fourth_bar_start, aiter_tflops, width, label='AITER (ASM)', color=colors[0])
         bars1 = ax.bar(fifth_bar_start, tk_tflops, width, label='HipKittens', color=colors[3])
         bars2 = ax.bar(second_bar_start, triton_vals, width, label='Triton', color=colors[2])
         bars3 = ax.bar(first_bar_start, torch_vals, width, label='PyTorch SDPA', color=colors[1])

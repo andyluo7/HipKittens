@@ -38,18 +38,18 @@ mi350x_baselines = {
         "16384": 872.262,
     },
     "hipblaslt": {
-        "1024": 160.740,
-        "2048": 531.720,
-        "4096": 917.728,
-        "8192": 1081.88,
-        "16384": 1041.98,
+        "1024": 171.251,
+        "2048": 577.087,
+        "4096": 1162.47,
+        "8192": 1240.10,
+        "16384": 1218.28,
     },
     "ck": {
-        "1024": 180.422,
-        "2048": 236.799,
-        "4096": 770.77,
-        "8192": 760.005,
-        "16384": 370.43,
+        "1024": 176.541,
+        "2048": 217.135,
+        "4096": 756.562,
+        "8192": 747.031,
+        "16384": 725.965,
     }
 }
 
@@ -121,7 +121,7 @@ for device in ['mi300x', 'mi325x', 'mi350x', 'mi355x']:
     fifth_bar = x + width
     sixth_bar = x + 2*width
     # bars0 = ax.bar(first_bar, pytorch_vals, width, label='PyTorch', color=colors[4])
-    bars1 = ax.bar(fourth_bar, aiter_vals, width, label='AITER (AMD)', color=colors[0])
+    bars1 = ax.bar(fourth_bar, aiter_vals, width, label='AITER (ASM)', color=colors[0])
     bars2 = ax.bar(third_bar, hipblaslt_vals, width, label='HipblasLT', color=colors[1])
     bars3 = ax.bar(fifth_bar, tk_vals, width, label='HipKittens', color=colors[3])
     bars4 = ax.bar(first_bar, triton_vals, width, label='Triton', color=colors[2])
