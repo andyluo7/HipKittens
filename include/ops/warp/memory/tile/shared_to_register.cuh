@@ -21,12 +21,11 @@ namespace kittens {
  *
  * @tparam RT The register tile type
  * @tparam ST The shared tile type
- * @tparam swizzle_src_ptr Whether the swizzled offset includes the ST
- *          base pointer. Optional register pressure optimization.
+ *
  * @param dst[out] The destination register tile.
  * @param src[in]  The source shared tile.
  */
-template<ducks::rt::row_layout RT, ducks::st::all ST, bool swizzle_src_ptr = false>
+template<ducks::rt::row_layout RT, ducks::st::all ST>
 __device__ inline static void load(RT &dst, const ST &src) {
 
     static_assert(RT::rows == ST::rows, "register tile and shared tile must match rows");
@@ -60,15 +59,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                 for (int j = 0; j < register_subtiles_per_shared_subtile_row; j++) {
                     const int row = i * RT::base_tile_rows + row_offset;
                     const int col = j * RT::base_tile_cols + col_offset + k * RT::base_tile_elements_per_stride_group;
-                    const uint32_t addr = [&] {
-                        if constexpr (swizzle_src_ptr) {
-                            const uint32_t swizzled_offset = src.swizzle({row, col}, src_ptr);
-                            return swizzled_offset;
-                        } else {
-                            const uint32_t swizzled_offset = src.swizzle({row, col});
-                            return src_ptr + swizzled_offset;
-                        }
-                    }();
+                    const uint32_t addr = src_ptr + src.swizzle({row, col});
 
                     const int idx = k * RT::base_tile_stride / packing;
 
