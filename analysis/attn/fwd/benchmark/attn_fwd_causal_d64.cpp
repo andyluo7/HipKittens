@@ -317,7 +317,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
     int pending_scale = 0;
 
     // hot loop
-    #pragma unroll 2
+    #pragma unroll
     for (int j = 3; j < max_num_tiles - 1; j += 2) {
         // Cluster 0:
         //      QK1
@@ -393,7 +393,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
 
         // Cluster 4:
         //      QK2
-        __builtin_amdgcn_s_setprio(1);
+        // __builtin_amdgcn_s_setprio(1);
         zero(att_block[0]);
         transpose(k_reg_transposed, k_reg);
         mma_AtB(att_block[0], k_reg_transposed, q_reg_transposed, att_block[0]);
@@ -407,7 +407,7 @@ __global__ void attend_ker(const attn_globals<D> g) {
         att_block_bf16_in = *reinterpret_cast<attn_tile<D, bf16, col_l, rt_16x32_4_s>*>(&att_block_bf16);
         sched_barrier_exp_pairs<6, 3, 3>();
         sched_barrier_pairs<10, 5, 3>();
-        __builtin_amdgcn_s_setprio(0);
+        // __builtin_amdgcn_s_setprio(0);
         __builtin_amdgcn_sched_barrier(0);
         __builtin_amdgcn_s_barrier();
         __builtin_amdgcn_sched_barrier(0);

@@ -204,3 +204,10 @@ for device in ['mi355x']:
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"Plot saved to {output_file}")
 
+        # Compute max and min win for HK over AITER
+        tk_aiter_wins = [tk_tflops[i] / aiter_tflops[i] for i in range(len(matrix_sizes))]
+        tk_torch_wins = [tk_tflops[i] / torch_vals[i] for i in range(len(matrix_sizes))]
+        tk_ck_wins = [tk_tflops[i] / ck_vals[i] for i in range(len(matrix_sizes))]
+        print(f"Max win for HK over AITER: {max(tk_aiter_wins):.2f}, Min: {min(tk_aiter_wins):.2f}")
+        print(f"Max win for HK over PyTorch: {max(tk_torch_wins):.2f}, Min: {min(tk_torch_wins):.2f}")
+        print(f"Max win for HK over Composable Kernel: {max(tk_ck_wins):.2f}, Min: {min(tk_ck_wins):.2f}\n")
