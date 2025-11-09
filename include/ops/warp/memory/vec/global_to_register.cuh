@@ -25,6 +25,8 @@ __device__ inline static void load(RV &dst, const GL &src, const COORD &idx) {
     using U2 = base_types::packing<U>::packed_type;
     using T = base_types::packing<T2>::unpacked_type;
 
+    static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "Unsupported type for load");
+
     U *src_ptr = (U*)&src[(idx.template unit_coord<-1, 3>())];
     int laneid = ::kittens::laneid();
 
@@ -138,7 +140,9 @@ __device__ inline static void store(const GL &dst, const RV &src, const COORD &i
     using U = typename GL::dtype;
     using U2 = base_types::packing<U>::packed_type;
     using T = base_types::packing<T2>::unpacked_type;
-    
+
+    static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "Unsupported type for store");
+
     U *dst_ptr = (U*)&dst[(idx.template unit_coord<-1, 3>())];
     int laneid = ::kittens::laneid();
 

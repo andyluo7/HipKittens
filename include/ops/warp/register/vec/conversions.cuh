@@ -31,6 +31,9 @@ __device__ static inline void copy(RV1 &dst, const RV2 &src) {
     using D2_1 = base_types::packing<D2>::unpacked_type;
     using D2_2 = base_types::packing<D2_1>::packed_type;
 
+    static_assert(!(std::is_same_v<D1_1, fp8e4m3> ^ std::is_same_v<D2_1, fp8e4m3>),
+                  "If either D1_1 or D2_1 is fp8e4m3, both must be fp8e4m3.");
+
     if constexpr (std::is_same_v<typename RV1::layout, typename RV2::layout>) { // just a simple copy / typecast
         #pragma unroll
         for(int i = 0; i < RV1::outer_dim; i++) {

@@ -604,6 +604,8 @@ __device__ inline static void store(ST &dst, const RT &src) {
     using U2 = base_types::packing<U >::packed_type;
     constexpr int packing = base_types::packing<typename RT::dtype>::num();
 
+    static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "Unsupported type for store");
+
     const int laneid = kittens::laneid();
 
     const int row_offset = laneid % src.base_tile_rows;
@@ -751,6 +753,8 @@ __device__ inline static void store(ST &dst, const RT &src) {
     using U  = ST::dtype;
     using U2 = base_types::packing<U >::packed_type;
     constexpr int packing = base_types::packing<typename RT::dtype>::num();
+
+    static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "Unsupported type for store");
 
     const int laneid = kittens::laneid();
 

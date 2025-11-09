@@ -28,6 +28,8 @@ __device__ inline static void load(RV &dst, const SV &src) {
     using U2 = base_types::packing<U>::packed_type;
     using T = base_types::packing<T2>::unpacked_type;
 
+    static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "Unsupported type for load");
+
     static_assert(SV::length == RV::length);
     
     int laneid = ::kittens::laneid();
@@ -135,7 +137,9 @@ __device__ inline static void store(SV &dst, const RV &src) {
     using T = base_types::packing<T2>::unpacked_type;
 
     static_assert(SV::length == RV::length);
-    
+
+    static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "Unsupported type for store");
+
     int laneid = ::kittens::laneid();
 
     if constexpr (std::is_same_v<typename RV::layout, align_l>) {

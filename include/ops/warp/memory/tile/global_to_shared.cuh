@@ -404,6 +404,7 @@ __device__ static inline void store(const GL &dst, const ST &src, const COORD &i
     using U = typename GL::dtype;
 
     static_assert(std::is_same_v<T, U>, "T and U must be the same type");
+    static_assert(!std::is_same_v<T, fp8e4m3>, "Unsupported type for store");
 
     constexpr int bytes_per_thread = ST::underlying_subtile_bytes_per_thread;
     constexpr int bytes_per_warp = bytes_per_thread * kittens::WARP_THREADS;

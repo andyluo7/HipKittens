@@ -30,6 +30,8 @@ __device__ static inline void load(SV &dst, const GL &src, const COORD &idx) {
     //     }
     // }
     using T = typename SV::dtype;
+    static_assert(!std::is_same_v<T, fp8e4m3>, "Unsupported type for load");
+
     constexpr int bytes_per_thread = 4;
     constexpr int num_memcpys = (SV::length * sizeof(T) + N_THREADS*bytes_per_thread - 1) / (N_THREADS*bytes_per_thread);
     static_assert(num_memcpys > 0, "num_memcpys must be greater than 0. Please decrease the number of threads.");
@@ -76,6 +78,7 @@ __device__ static inline void load(SV &dst, const GL &src, const COORD &idx) {
  */
 template<ducks::sv::all SV, ducks::gl::all GL, ducks::coord::vec COORD=coord<SV>>
 __device__ static inline void store(const GL &dst, const SV &src, const COORD &idx) {
+    static_assert(!std::is_same_v<typename kittens::base_types::packing<typename SV::dtype>::unpacked_type, fp8e4m3>, "Unsupported type for store");
     constexpr int elem_per_transfer = sizeof(float4) / sizeof(typename SV::dtype);
     constexpr int total_calls = (SV::length + WARP_THREADS*elem_per_transfer-1) / (WARP_THREADS*elem_per_transfer); // round up
     typename GL::dtype *dst_ptr = (typename GL::dtype*)&dst[(idx.template unit_coord<-1, 3>())];

@@ -35,6 +35,8 @@ __device__ static inline void row_reduce(V &row_accum, const T &src, const V &sr
     using RT = V::dtype;
     using RT2 = base_types::packing<RT>::packed_type;
 
+    static_assert(!std::is_same_v<RT, fp8e4m3>, "Unsupported type for reduction");
+
     const int leader = laneid() % T::base_tile_rows;
     const int max_shift = T::base_tile_threads_per_reduction / 2;
 
@@ -105,6 +107,8 @@ __device__ static inline void row_reduce(V &row_accum, const T &src, const V &sr
 
     using RT2 = V::dtype;
     using RT = base_types::packing<RT2>::unpacked_type;
+
+    static_assert(!std::is_same_v<RT, fp8e4m3>, "Unsupported type for reduction");
 
     const int leader = (laneid() / T::base_tile_cols) * T::base_tile_cols;
     const int packed_per_tile = src.packed_per_base_tile;
@@ -179,6 +183,8 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
     using RT2 = V::dtype;
     using RT = base_types::packing<RT2>::unpacked_type;
 
+    static_assert(!std::is_same_v<RT, fp8e4m3>, "Unsupported type for reduction");
+
     const int leader = (laneid() / T::base_tile_rows) * T::base_tile_rows;
     constexpr int packed_per_tile = T::packed_per_base_tile;
     constexpr int max_shift = T::base_tile_rows / 2;
@@ -248,6 +254,8 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
     static_assert(std::is_same_v<typename V::layout, typename rt_base<typename T::T, typename T::layout, typename T::shape>::row_vec_layout>); // compatible layout
     static_assert(std::is_same_v<RT2, typename T::dtype>); // compatible type
     static_assert(V::outer_dim == T::width); // compatible size
+
+    static_assert(!std::is_same_v<RT, fp8e4m3>, "Unsupported type for reduction");
 
     const int leader = laneid() % T::base_tile_cols;
     const int max_shift = T::base_tile_threads_per_reduction / 2;
