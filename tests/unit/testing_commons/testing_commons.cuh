@@ -100,6 +100,14 @@ template<int H, int W, int NW> std::string generate_test_name(std::string test_i
     }
     return label;
 }
+template<kittens::ducks::rt_shape::all RT_SHAPE, int H, int W, int NW, integral_wrapper _K> std::string generate_test_name(std::string test_id) {
+    constexpr int K = _K::value;
+    std::string label = generate_test_name<H,W,NW>(test_id);
+    if constexpr (std::is_same_v<RT_SHAPE, kittens::ducks::rt_shape::rt_32x32>) label += "_[rt_32x32]";
+    else if constexpr (std::is_same_v<RT_SHAPE, kittens::ducks::rt_shape::rt_16x16>) label += "_[rt_16x16]";
+    else static_assert(false, "Unknown shape");
+    return label;
+}
 
 template<kittens::ducks::rt_shape::all RT_SHAPE, kittens::ducks::st_shape::all ST_SHAPE, int H, int W, int NW> std::string generate_test_name(std::string test_id) {
     std::string label = generate_test_name<H,W,NW>(test_id);
