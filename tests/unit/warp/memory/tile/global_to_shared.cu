@@ -6,7 +6,9 @@ template<typename T>
 struct st_load_store {
     using dtype = T;
     template<typename RT_SHAPE, typename ST_SHAPE, int H, int W, int NW, typename axis> using valid = std::bool_constant<
-        (NW == 1 && W*H<=64) && (W*H*ST_SHAPE::cols*ST_SHAPE::rows*sizeof(T) <= kittens::MAX_SHARED_MEMORY)
+        (NW == 1 && W*H<=64) 
+        && (W*H*ST_SHAPE::cols*ST_SHAPE::rows*sizeof(T) <= kittens::MAX_SHARED_MEMORY)
+        && ((W*H*ST_SHAPE::cols*ST_SHAPE::rows*sizeof(T)) % (kittens::WARP_THREADS * ST_SHAPE::template bytes_per_thread<T>()) == 0)
     >;
     static inline const std::string test_identifier = std::is_same_v<T, kittens::bf16> ? "shared_loadstore_gmem=bf16" :
                                                       std::is_same_v<T, kittens::half> ? "shared_loadstore_gmem=half" :
@@ -40,62 +42,37 @@ struct st_load_store {
 using I0_t = std::integral_constant<int, 0>;
 using I1_t = std::integral_constant<int, 1>;
 using I2_t = std::integral_constant<int, 2>;
-void warp::memory::tile::global_to_shared::tests(test_data &results) {
-    std::cout << "\n ----- Starting ops/warp/memory/tile/global_to_shared tests! -----\n" << std::endl;
+template<kittens::ducks::st_shape::all ST_SHAPE, kittens::ducks::rt_shape::all RT_SHAPE=kittens::ducks::rt_shape::rt_16x16>
+void test_generator(test_data &results) {
     constexpr int SIZE = INTENSITY_0 ? 1  :
                          INTENSITY_1 ? 2  :
                          INTENSITY_2 ? 4  :
                          INTENSITY_3 ? 8  :
                          INTENSITY_4 ? 16 : -1;
 
+    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I0_t>::run(results);
+    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I1_t>::run(results);
+    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I2_t>::run(results);
 
-    using RT_SHAPE_1 = kittens::ducks::rt_shape::rt_16x16;
-    using ST_SHAPE_1 = kittens::ducks::st_shape::st_16x16;
-    // g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_1, ST_SHAPE_1, SIZE, SIZE, I2_t>::run(results);  // NOTE: unsupported (< 1024 bytes)
-    // g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_1, ST_SHAPE_1, MAX_H, MAX_W>::run(results); // NOTE: unsupported (< 1024 bytes)
-    // g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE_1, ST_SHAPE_1, SIZE, SIZE, I2_t>::run(results); // NOTE: Not needed
+    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I0_t>::run(results);
+    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I1_t>::run(results);
+    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I2_t>::run(results);
 
-
-    using ST_SHAPE_2 = kittens::ducks::st_shape::st_16x16_swizzled;
-    // NOTE: unsupported.
-
-    using RT_SHAPE_3 = kittens::ducks::rt_shape::rt_32x32;
-    using ST_SHAPE_3 = kittens::ducks::st_shape::st_32x32;
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_3, ST_SHAPE_3, SIZE, SIZE, I2_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_3, ST_SHAPE_3, SIZE, SIZE, I2_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_3, ST_SHAPE_3, SIZE, SIZE, I1_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_3, ST_SHAPE_3, SIZE, SIZE, I1_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_3, ST_SHAPE_3, SIZE, SIZE, I0_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_3, ST_SHAPE_3, SIZE, SIZE, I0_t>::run(results);
-    // g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE_3, ST_SHAPE_3, SIZE, SIZE, I2_t>::run(results); // NOTE: unsupported
+    g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I0_t>::run(results);
+    g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I1_t>::run(results);
+    g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, I2_t>::run(results);
+}
 
 
-    using RT_SHAPE_4 = kittens::ducks::rt_shape::rt_16x32;
-    using ST_SHAPE_4 = kittens::ducks::st_shape::st_16x32;
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_4, ST_SHAPE_4, SIZE, SIZE, I2_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_4, ST_SHAPE_4, SIZE, SIZE, I2_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_4, ST_SHAPE_4, SIZE, SIZE, I1_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_4, ST_SHAPE_4, SIZE, SIZE, I1_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_4, ST_SHAPE_4, SIZE, SIZE, I0_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_4, ST_SHAPE_4, SIZE, SIZE, I0_t>::run(results);
-    // g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE_4, ST_SHAPE_4, SIZE, SIZE, I2_t>::run(results); // NOTE: unsupported
 
+void warp::memory::tile::global_to_shared::tests(test_data &results) {
+    std::cout << "\n ----- Starting ops/warp/memory/tile/global_to_shared tests! -----\n" << std::endl;
 
-    using RT_SHAPE_5 = kittens::ducks::rt_shape::rt_32x16;
-    using ST_SHAPE_5 = kittens::ducks::st_shape::st_32x16;
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_5, ST_SHAPE_5, SIZE, SIZE, I2_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_5, ST_SHAPE_5, SIZE, SIZE, I2_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_5, ST_SHAPE_5, SIZE, SIZE, I1_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_5, ST_SHAPE_5, SIZE, SIZE, I1_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_5, ST_SHAPE_5, SIZE, SIZE, I0_t>::run(results);
-    g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_5, ST_SHAPE_5, SIZE, SIZE, I0_t>::run(results);
-    // g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE_5, ST_SHAPE_5, SIZE, SIZE, I2_t>::run(results); // NOTE: unsupported
-
-
-    using RT_SHAPE_6 = kittens::ducks::rt_shape::rt_32x32; // placeholder
-    using ST_SHAPE_6 = kittens::ducks::st_shape::st_8x32;
-    // g2s_sweep_size_2d_warp<st_load_store<kittens::bf16>, RT_SHAPE_6, ST_SHAPE_6, SIZE, SIZE, I2_t>::run(results);  // NOTE: unsupported (< 1024 bytes)
-    // g2s_sweep_size_2d_warp<st_load_store<kittens::half>, RT_SHAPE_6, ST_SHAPE_6, SIZE, SIZE, I2_t>::run(results); // NOTE: unsupported (< 1024 bytes)
-    // g2s_sweep_size_2d_warp<st_load_store<float>, RT_SHAPE_6, ST_SHAPE_6, SIZE, SIZE, I2_t>::run(results); // NOTE: unsupported
+    test_generator<kittens::ducks::st_shape::st_16x16>(results);
+    test_generator<kittens::ducks::st_shape::st_16x16_swizzled>(results);
+    test_generator<kittens::ducks::st_shape::st_32x32>(results);
+    test_generator<kittens::ducks::st_shape::st_16x32>(results);
+    test_generator<kittens::ducks::st_shape::st_32x16>(results);
+    test_generator<kittens::ducks::st_shape::st_8x32>(results);
 }
 #endif

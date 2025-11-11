@@ -73,7 +73,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                             const int register_row = ii * register_subtiles_per_shared_subtile_col + i;
                             const int register_col = jj * register_subtiles_per_shared_subtile_row + j;
 
-                            if constexpr (std::is_same_v<U2, bf16_2>) {
+                            if constexpr (std::is_same_v<U2, bf16_2> || std::is_same_v<U2, half_2>) {
                                 if constexpr (RT::base_tile_stride == 8) {
                                     asm volatile(
                                         "ds_read_b128 %0, %1 offset:%2\n"
@@ -144,7 +144,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                     const int shared_subtile_id = shared_row * ST::underlying_subtiles_per_row + shared_col;
                     const int offset = shared_subtile_id * ST::underlying_subtile_bytes;
 
-                    if constexpr (std::is_same_v<U2, bf16_2>) {
+                    if constexpr (std::is_same_v<U2, bf16_2> || std::is_same_v<U2, half_2>) {
                         // Special handling for 32x16 and stride == 8
                         if constexpr (RT::base_tile_stride == 8 && (std::is_same_v<typename ST::shape, st_32x16_s>)) {
                             asm volatile(
@@ -241,7 +241,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                             const int register_row = ii * register_subtiles_per_shared_subtile_col + i;
                             const int register_col = jj * register_subtiles_per_shared_subtile_row + j;
 
-                            if constexpr (std::is_same_v<U2, bf16_2>) {
+                            if constexpr (std::is_same_v<U2, bf16_2> || std::is_same_v<U2, half_2>) {
                                 // Special handling for stride == 8, shared tile shape == 16x32
                                 if constexpr (RT::base_tile_stride == 8 && std::is_same_v<typename ST::shape, st_16x32_s>) {
                                     asm volatile(
@@ -324,7 +324,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                             const int shared_subtile_id = shared_row * ST::underlying_subtiles_per_row + shared_col;
                             const int offset = shared_subtile_id * ST::underlying_subtile_bytes + shared_base_offset;
 
-                            if constexpr (std::is_same_v<U2, bf16_2>) {
+                            if constexpr (std::is_same_v<U2, bf16_2> || std::is_same_v<U2, half_2>) {
                                 // Use two ds_read_b64_tr_b16 for stride == 8, dtype == bf16
                                 if constexpr (RT::base_tile_stride == 8) {
                                     asm volatile(
@@ -473,7 +473,7 @@ __device__ inline static void store(ST &dst, const RT &src) {
                             const int register_row = ii * register_subtiles_per_shared_subtile_col + i;
                             const int register_col = jj * register_subtiles_per_shared_subtile_row + j;
 
-                            if constexpr (std::is_same_v<U2, bf16_2>) {
+                            if constexpr (std::is_same_v<U2, bf16_2> || std::is_same_v<U2, half_2>) {
                                 // Use ds_write_b128 for stride == 8, dtype == bf16
                                 if constexpr (RT::base_tile_stride == 8) {
                                     asm volatile(
@@ -536,7 +536,7 @@ __device__ inline static void store(ST &dst, const RT &src) {
                     const int shared_subtile_id = shared_row * ST::underlying_subtiles_per_row + shared_col;
                     const int offset = shared_subtile_id * ST::underlying_subtile_bytes;
 
-                    if constexpr (std::is_same_v<U2, bf16_2>) {
+                    if constexpr (std::is_same_v<U2, bf16_2> || std::is_same_v<U2, half_2>) {
                         // Use ds_write_b128 for stride == 8, dtype == bf16
                         if constexpr (RT::base_tile_stride == 8) {
                             asm volatile(

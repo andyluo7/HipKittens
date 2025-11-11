@@ -6,8 +6,10 @@ template<typename T>
 struct test_subtile {
     using dtype = T;
     template<typename RT_SHAPE, typename ST_SHAPE, int H, int W, int NW, typename _ST_H, typename _ST_W> using valid = std::bool_constant<(
-        NW == 1 && W*H<=64 && W*H % 2 == 0
+        NW == 1 && W*H<=64
         && (H % _ST_H::value == 0 && W % _ST_W::value == 0 ) 
+        && (W*H*ST_SHAPE::cols*ST_SHAPE::rows*sizeof(T) <= kittens::MAX_SHARED_MEMORY / 2)
+        && (W*H*ST_SHAPE::cols*ST_SHAPE::rows*sizeof(T)) % (kittens::WARP_THREADS * ST_SHAPE::template bytes_per_thread<T>()) == 0
         && sizeof(dtype) != 1
     )>;
     static inline const std::string test_identifier = std::is_same_v<T, kittens::bf16> ? "shared_subtile_gmem=bf16" :

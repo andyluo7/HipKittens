@@ -189,55 +189,37 @@ struct mma_wrapper_2d {
 template<typename test, typename RT_SHAPE_ACCUM, typename ST_SHAPE=kittens::ducks::st_shape::st_16x16, int MAX_H=8, int MAX_W=8, int NUM_WORKERS=1, typename... args> using mma_sweep_size = loop_h<mma_wrapper_2d, test, RT_SHAPE_ACCUM, ST_SHAPE, MAX_H, MAX_W, NUM_WORKERS, MAX_H, args...>;
 template<typename test, typename RT_SHAPE_ACCUM, typename ST_SHAPE=kittens::ducks::st_shape::st_16x16, int MAX_H=8, int MAX_W=8, typename... args> using mma_sweep_size_warp = mma_sweep_size<test, RT_SHAPE_ACCUM, ST_SHAPE, MAX_H, MAX_W, 1, args...>;
 
-void warp::reg::tile::mma::tests(test_data &results) {
-    std::cout << "\n ----- Starting ops/warp/register/tile/mma tests! -----\n" << std::endl;
+template<kittens::ducks::rt_shape::all RT_SHAPE, kittens::ducks::st_shape::all ST_SHAPE=kittens::ducks::st_shape::st_16x16>
+void test_generator(test_data &results) {
     constexpr int SIZE = INTENSITY_0 ? 1  :
                          INTENSITY_1 ? 2  :
-                         INTENSITY_2 ? 4  :
+                         INTENSITY_2 ? 4  : 
                          INTENSITY_3 ? 8  :
                          INTENSITY_4 ? 16 : -1;
 
-    // ST_SHAPE is irrelvant for these tests, so we can use a fixed shape
-    using DEFAULT_ST_SHAPE = kittens::ducks::st_shape::st_16x16;
+    mma_sweep_size_warp<test_mma_AB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
+    mma_sweep_size_warp<test_mma_AB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
+    mma_sweep_size_warp<test_mma_AB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
+    mma_sweep_size_warp<test_mma_AB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
+    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
+    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
+    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
+    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
+    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
+    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
+    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
+    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
+    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
+    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
+    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
+    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE, ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
+}
 
-    // bf16
-    // mfma_32x32x16
-    using RT_SHAPE_ACCUM_1 = kittens::ducks::rt_shape::rt_32x32;
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_1, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
+void warp::reg::tile::mma::tests(test_data &results) {
+    std::cout << "\n ----- Starting ops/warp/register/tile/mma tests! -----\n" << std::endl;
 
-    // mfma_16x16x32
-    using RT_SHAPE_ACCUM_2 = kittens::ducks::rt_shape::rt_16x16;
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_AB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_ABt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_AtB, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 1>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 2>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 3>>::run(results);
-    mma_sweep_size_warp<test_mma_AtBt, RT_SHAPE_ACCUM_2, DEFAULT_ST_SHAPE, SIZE, SIZE, std::integral_constant<int, 4>>::run(results);
+    test_generator<kittens::ducks::rt_shape::rt_32x32>(results);
+    test_generator<kittens::ducks::rt_shape::rt_16x16>(results);
 }
 
 #endif

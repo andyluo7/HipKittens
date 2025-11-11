@@ -42,14 +42,14 @@ using I0_t = std::integral_constant<int, 0>;
 using I1_t = std::integral_constant<int, 1>;
 using I2_t = std::integral_constant<int, 2>;
 template<kittens::ducks::st_shape::all ST_SHAPE, kittens::ducks::rt_shape::all RT_SHAPE=kittens::ducks::rt_shape::rt_16x16>
-void generate_tests(test_data &results) {
+void test_generator(test_data &results) {
     constexpr int SIZE = INTENSITY_0 ? 1  :
                          INTENSITY_1 ? 2  :
                          INTENSITY_2 ? 4  : 
                          INTENSITY_3 ? 8  :
                          INTENSITY_4 ? 16 : -1;
 
-    g2s_sweep_size_2d<group_shared_load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, 1, I0_t>::run(results);
+    g2s_sweep_size_2d<group_shared_load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, 2, I0_t>::run(results);
     g2s_sweep_size_2d<group_shared_load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, 4, I0_t>::run(results);
     g2s_sweep_size_2d<group_shared_load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, 8, I0_t>::run(results);
 
@@ -89,12 +89,12 @@ void generate_tests(test_data &results) {
 void group::memory::tile::global_to_shared::tests(test_data &results) {
     std::cout << "\n ----- Starting ops/group/memory/tile/global_to_shared tests! -----\n" << std::endl;
 
-    generate_tests<kittens::ducks::st_shape::st_16x16>(results);
-    generate_tests<kittens::ducks::st_shape::st_16x16_swizzled>(results);
-    generate_tests<kittens::ducks::st_shape::st_32x32>(results);
-    generate_tests<kittens::ducks::st_shape::st_16x32>(results);
-    generate_tests<kittens::ducks::st_shape::st_32x16>(results);
-    generate_tests<kittens::ducks::st_shape::st_8x32>(results);
+    test_generator<kittens::ducks::st_shape::st_16x16>(results);
+    test_generator<kittens::ducks::st_shape::st_16x16_swizzled>(results);
+    test_generator<kittens::ducks::st_shape::st_32x32>(results);
+    test_generator<kittens::ducks::st_shape::st_16x32>(results);
+    test_generator<kittens::ducks::st_shape::st_32x16>(results);
+    test_generator<kittens::ducks::st_shape::st_8x32>(results);
 }
 
 #endif

@@ -69,77 +69,32 @@ struct load_store {
     }
 };
 
-void warp::memory::tile::global_to_register::tests(test_data &results) {
-    std::cout << "\n ----- Starting ops/warp/memory/tile/global_to_register tests! -----\n" << std::endl;
+template<kittens::ducks::rt_shape::all RT_SHAPE, kittens::ducks::st_shape::all ST_SHAPE=kittens::ducks::st_shape::st_16x16>
+void test_generator(test_data &results) {
     constexpr int SIZE = INTENSITY_0 ? 1  :
                          INTENSITY_1 ? 2  :
                          INTENSITY_2 ? 4  : 
                          INTENSITY_3 ? 8  :
                          INTENSITY_4 ? 16 : -1;
-                         
-    using DEFAULT_ST_SHAPE = kittens::ducks::st_shape::st_16x16;
 
-    using RT_SHAPE_1 = kittens::ducks::rt_shape::rt_16x32;
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_1, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_1, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_1, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_1, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_1, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_1, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
+    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
+    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
+    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
+    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
+    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
+    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE, ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
+}
 
+void warp::memory::tile::global_to_register::tests(test_data &results) {
+    std::cout << "\n ----- Starting ops/warp/memory/tile/global_to_register tests! -----\n" << std::endl;
 
-    using RT_SHAPE_2 = kittens::ducks::rt_shape::rt_32x16;
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_2, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_2, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_2, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_2, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_2, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_2, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-
-
-    using RT_SHAPE_3 = kittens::ducks::rt_shape::rt_16x16;
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_3, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_3, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_3, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_3, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_3, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_3, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-
-
-    using RT_SHAPE_4 = kittens::ducks::rt_shape::rt_32x32;
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_4, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_4, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_4, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_4, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_4, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_4, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-
-
-    using RT_SHAPE_5 = kittens::ducks::rt_shape::rt_32x32_8;
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_5, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_5, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_5, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_5, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_5, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_5, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-
-
-    using RT_SHAPE_6 = kittens::ducks::rt_shape::rt_16x32_4;
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_6, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_6, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_6, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_6, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_6, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_6, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-
-
-    using RT_SHAPE_7 = kittens::ducks::rt_shape::rt_32x16_4;
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_7, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<float>, RT_SHAPE_7, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_7, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::bf16>, RT_SHAPE_7, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_7, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::row>::run(results);
-    g2r_sweep_size_2d_warp<load_store<kittens::half>, RT_SHAPE_7, DEFAULT_ST_SHAPE, SIZE, SIZE, kittens::ducks::rt_layout::col>::run(results);
+    test_generator<kittens::ducks::rt_shape::rt_16x32>(results);
+    test_generator<kittens::ducks::rt_shape::rt_32x16>(results);
+    test_generator<kittens::ducks::rt_shape::rt_16x16>(results);
+    test_generator<kittens::ducks::rt_shape::rt_32x32>(results);
+    test_generator<kittens::ducks::rt_shape::rt_32x32_8>(results);
+    test_generator<kittens::ducks::rt_shape::rt_16x32_4>(results);
+    test_generator<kittens::ducks::rt_shape::rt_32x16_4>(results);
 }
 
 #endif
