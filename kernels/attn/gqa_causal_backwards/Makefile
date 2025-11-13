@@ -1,8 +1,12 @@
+
 # Usage:
-#   make SRC=my_kernel.cpp TARGET=my_kernel
+#   make                    # builds all default kernels
+#   (previously: make SRC=my_kernel.cpp TARGET=my_kernel)
 #
-# Example:
-#   make SRC=GQA_bkwd_asm_interleaved.cpp TARGET=tk_kernel_bkwd
+# Example kernels built by default:
+#   tk_kernel_bkwd       from attn_bkwd_causal.cpp
+#   tk_kernel_bkwd_prep  from attn_bkwd_prep.cpp
+#   tk_kernel_fwd        from attn_fwd_causal.cpp
 
 # Compiler
 GPU_TARGET ?= CDNA4
@@ -11,7 +15,7 @@ GPU_TARGET ?= CDNA4
 ATTN_B ?= 16
 ATTN_H ?= 64
 ATTN_H_KV ?= 8
-ATTN_N ?= 8192
+ATTN_N ?= 4096
 
 CPPFLAGS += -DATTN_B=$(ATTN_B)
 CPPFLAGS += -DATTN_H=$(ATTN_H)
@@ -22,14 +26,6 @@ CPPFLAGS += -DATTN_N=$(ATTN_N)
 ROCM_INSTALL_DIR := $(ROCM_PATH)
 HIP_INCLUDE_DIR  := $(ROCM_INSTALL_DIR)/include/hip
 HIPCXX ?= $(ROCM_INSTALL_DIR)/bin/hipcc
-
-# Check that SRC and TARGET were provided
-ifeq ($(strip $(SRC)),)
-  $(error You must provide SRC=<source_file.cpp>)
-endif
-ifeq ($(strip $(TARGET)),)
-  $(error You must provide TARGET=<binary_name>)
-endif
 
 # Compiler flags based on GPU target
 ifeq ($(GPU_TARGET),CDNA2)
@@ -60,19 +56,37 @@ ICXXFLAGS += $(PY_LDFLAGS)
 ICXXFLAGS += -I${THUNDERKITTENS_ROOT}/include -I${THUNDERKITTENS_ROOT}/prototype \
              $(shell python3 -m pybind11 --includes) -shared -fPIC -Rpass-analysis=kernel-resource-usage
 
-# Default target
-all: $(TARGET)
-
+# Log directory & file (one per make invocation)
 LOGDIR := /workdir/data_logs/$(shell date +%m%d_%H%M%S)_outputs
 LOGFILE := $(LOGDIR)/make_build.log
 
-$(TARGET): $(SRC)
+# --------------------------------------------------------------------
+# Default target: build all three kernels
+# --------------------------------------------------------------------
+all: tk_kernel_bkwd tk_kernel_bkwd_prep tk_kernel_fwd
+
+# --------------------------------------------------------------------
+# Explicit rules for each kernel
+# --------------------------------------------------------------------
+
+tk_kernel_bkwd: attn_bkwd_causal.cpp
 	@mkdir -p $(LOGDIR)
-	$(HIPCXX) $(SRC) $(HIPFLAGS) $(ICXXFLAGS) $(ICPPFLAGS) $(ILDFLAGS) \
-	    -o $(TARGET)$(shell python3-config --extension-suffix) 2>&1 | tee $(LOGFILE)
+	$(HIPCXX) $< $(HIPFLAGS) $(ICXXFLAGS) $(ICPPFLAGS) $(ILDFLAGS) \
+	    -o $@$(shell python3-config --extension-suffix) 2>&1 | tee $(LOGFILE)
+
+tk_kernel_bkwd_prep: attn_bkwd_prep.cpp
+	@mkdir -p $(LOGDIR)
+	$(HIPCXX) $< $(HIPFLAGS) $(ICXXFLAGS) $(ICPPFLAGS) $(ILDFLAGS) \
+	    -o $@$(shell python3-config --extension-suffix) 2>&1 | tee $(LOGFILE)
+
+tk_kernel_fwd: attn_fwd_causal.cpp
+	@mkdir -p $(LOGDIR)
+	$(HIPCXX) $< $(HIPFLAGS) $(ICXXFLAGS) $(ICPPFLAGS) $(ILDFLAGS) \
+	    -o $@$(shell python3-config --extension-suffix) 2>&1 | tee $(LOGFILE)
 
 # Clean target
 clean:
-	rm -f $(TARGET)*
+	rm -f tk_kernel_bkwd* tk_kernel_bkwd_prep* tk_kernel_fwd*
 
 .PHONY: all clean
+
